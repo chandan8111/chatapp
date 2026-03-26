@@ -1,0 +1,554 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: websocket-gateway
+  namespace: chatapp
+  labels:
+    app: websocket-gateway
+    component: gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: websocket-gateway
+  template:
+    metadata:
+      labels:
+        app: websocket-gateway
+        component: gateway
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - websocket-gateway
+              topologyKey: kubernetes.io/hostname
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - websocket-gateway
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: websocket-gateway
+        image: chatapp/websocket-gateway:latest
+        imagePullPolicy: Always
+        ports:
+        - name: websocket
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: REDIS_ADDR
+          value: "redis-cluster:6379"
+        - name: KAFKA_BROKERS
+          value: "kafka-cluster:9092"
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: MAX_CONNECTIONS
+          value: "200000"
+        - name: GOMAXPROCS
+          value: "8"
+        - name: GOGC
+          value: "100"
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 8Gi
+            ephemeral-storage: 10Gi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        lifecycle:
+          preStop:
+            httpGet:
+              path: /shutdown
+              port: 8080
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: config
+          mountPath: /etc/chatapp
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 1Gi
+      - name: config
+        configMap:
+          name: gateway-config
+      terminationGracePeriodSeconds: 60
+      dnsPolicy: ClusterFirst
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: websocket-gateway
+  namespace: chatapp
+  labels:
+    app: websocket-gateway
+    component: gateway
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  selector:
+    app: websocket-gateway
+  ports:
+  - name: websocket
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: message-processor
+  namespace: chatapp
+  labels:
+    app: message-processor
+    component: processor
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: message-processor
+  template:
+    metadata:
+      labels:
+        app: message-processor
+        component: processor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - message-processor
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: message-processor
+        image: chatapp/message-processor:latest
+        imagePullPolicy: Always
+        ports:
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: KAFKA_BROKERS
+          value: "kafka-cluster:9092"
+        - name: SCYLLA_HOSTS
+          value: "scylla-cluster:9042"
+        - name: REDIS_ADDR
+          value: "redis-cluster:6379"
+        - name: CONSUMER_GROUP
+          value: "message-processors"
+        - name: GOMAXPROCS
+          value: "4"
+        - name: GOGC
+          value: "100"
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+            ephemeral-storage: 5Gi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 45
+          periodSeconds: 15
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 500Mi
+      terminationGracePeriodSeconds: 120
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: message-processor
+  namespace: chatapp
+  labels:
+    app: message-processor
+    component: processor
+spec:
+  type: ClusterIP
+  selector:
+    app: message-processor
+  ports:
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: presence-service
+  namespace: chatapp
+  labels:
+    app: presence-service
+    component: presence
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: presence-service
+  template:
+    metadata:
+      labels:
+        app: presence-service
+        component: presence
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: presence-service
+        image: chatapp/presence-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: REDIS_ADDR
+          value: "redis-cluster:6379"
+        - name: KAFKA_BROKERS
+          value: "kafka-cluster:9092"
+        - name: NODE_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: GOMAXPROCS
+          value: "2"
+        - name: GOGC
+          value: "100"
+        resources:
+          requests:
+            cpu: 300m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+            ephemeral-storage: 2Gi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 200Mi
+      terminationGracePeriodSeconds: 60
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: presence-service
+  namespace: chatapp
+  labels:
+    app: presence-service
+    component: presence
+spec:
+  type: ClusterIP
+  selector:
+    app: presence-service
+  ports:
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fanout-service
+  namespace: chatapp
+  labels:
+    app: fanout-service
+    component: fanout
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fanout-service
+  template:
+    metadata:
+      labels:
+        app: fanout-service
+        component: fanout
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - fanout-service
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: fanout-service
+        image: chatapp/fanout-service:latest
+        imagePullPolicy: Always
+        ports:
+        - name: metrics
+          containerPort: 9090
+          protocol: TCP
+        env:
+        - name: REDIS_ADDR
+          value: "redis-cluster:6379"
+        - name: KAFKA_BROKERS
+          value: "kafka-cluster:9092"
+        - name: SCYLLA_HOSTS
+          value: "scylla-cluster:9042"
+        - name: CELEBRITY_THRESHOLD
+          value: "100000"
+        - name: BATCH_SIZE
+          value: "100"
+        - name: GOMAXPROCS
+          value: "4"
+        - name: GOGC
+          value: "100"
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+            ephemeral-storage: 3Gi
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 9090
+          initialDelaySeconds: 45
+          periodSeconds: 15
+          timeoutSeconds: 10
+          successThreshold: 1
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 500Mi
+      terminationGracePeriodSeconds: 90
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fanout-service
+  namespace: chatapp
+  labels:
+    app: fanout-service
+    component: fanout
+spec:
+  type: ClusterIP
+  selector:
+    app: fanout-service
+  ports:
+  - name: metrics
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: chatapp
+data:
+  config.yaml: |
+    server:
+      port: 8080
+      read_timeout: 15s
+      write_timeout: 15s
+      idle_timeout: 60s
+      max_connections: 200000
+    
+    websocket:
+      read_buffer_size: 1024
+      write_buffer_size: 1024
+      ping_period: 54s
+      pong_wait: 60s
+      write_wait: 10s
+      max_message_size: 8192
+    
+    redis:
+      max_retries: 3
+      pool_size: 100
+      min_idle_conns: 10
+      max_conn_age: 1h
+      read_timeout: 100ms
+      write_timeout: 100ms
+      pool_timeout: 30s
+      idle_timeout: 5m
+    
+    kafka:
+      producer_flush_frequency: 100ms
+      producer_flush_messages: 100
+      max_message_bytes: 10485760
+      required_acks: all
+      retry_max: 5
+      retry_backoff: 100ms
+      compression: snappy
+    
+    metrics:
+      enabled: true
+      port: 9090
+      path: /metrics
+    
+    logging:
+      level: info
+      format: json
+    
+    security:
+      tls_enabled: true
+      min_version: "1.2"
+      cert_file: /etc/certs/tls.crt
+      key_file: /etc/certs/tls.key

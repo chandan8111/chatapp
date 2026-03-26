@@ -1,0 +1,490 @@
+# Default values for chatapp
+# This is a YAML-formatted file
+
+# Global configuration
+global:
+  environment: development
+  imageRegistry: "chatapp"
+  imageTag: "latest"
+  imagePullPolicy: "IfNotPresent"
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  
+  # Monitoring
+  monitoring:
+    enabled: true
+    port: 9090
+  
+  # Security
+  security:
+    tls:
+      enabled: false
+      certSecret: ""
+      keySecret: ""
+    
+    # Network policies
+    networkPolicy:
+      enabled: true
+
+# WebSocket Gateway Configuration
+websocketGateway:
+  enabled: true
+  replicas: 3
+  
+  image:
+    repository: chatapp/gateway
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: LoadBalancer
+    port: 8080
+    targetPort: 8080
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+      service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  
+  resources:
+    limits:
+      cpu: 4000m
+      memory: 8Gi
+      ephemeral-storage: 10Gi
+    requests:
+      cpu: 1000m
+      memory: 2Gi
+  
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    metrics:
+      - type: Pods
+        pods:
+          metric:
+            name: websocket_connections
+          target:
+            type: AverageValue
+            averageValue: "150000"
+  
+  pdb:
+    enabled: true
+    minAvailable: 2
+  
+  config:
+    server:
+      port: 8080
+      max_connections: 200000
+      read_timeout: 15s
+      write_timeout: 15s
+    
+    websocket:
+      ping_period: 54s
+      pong_wait: 60s
+      write_wait: 10s
+      max_message_size: 8192
+    
+    redis:
+      pool_size: 100
+      min_idle_conns: 10
+      max_conn_age: 1h
+    
+    kafka:
+      producer_flush_frequency: 100ms
+      producer_flush_messages: 100
+      compression: snappy
+    
+    performance:
+      gomaxprocs: 8
+      gogc: 100
+  
+  # Environment variables
+  env:
+    - name: NODE_ID
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+    - name: POD_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.name
+    - name: POD_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.podIP
+
+# Message Processor Configuration
+messageProcessor:
+  enabled: true
+  replicas: 5
+  
+  image:
+    repository: chatapp/processor
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 9090
+    targetPort: 9090
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+      ephemeral-storage: 5Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  hpa:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 50
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 85
+  
+  pdb:
+    enabled: true
+    minAvailable: 3
+  
+  config:
+    consumer_group: "message-processors"
+    batch_size: 50
+    batch_timeout: 10ms
+  
+  env:
+    - name: KAFKA_BROKERS
+      value: "kafka-cluster:9092"
+    - name: SCYLLA_HOSTS
+      value: "scylla-cluster:9042"
+    - name: GOMAXPROCS
+      value: "4"
+
+# Presence Service Configuration
+presenceService:
+  enabled: true
+  replicas: 2
+  
+  image:
+    repository: chatapp/presence
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 9090
+    targetPort: 9090
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+      ephemeral-storage: 2Gi
+    requests:
+      cpu: 300m
+      memory: 512Mi
+  
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 60
+    targetMemoryUtilizationPercentage: 70
+  
+  pdb:
+    enabled: true
+    minAvailable: 1
+  
+  config:
+    heartbeat_batch_size: 1000
+    heartbeat_flush_interval: 5s
+  
+  env:
+    - name: REDIS_ADDR
+      value: "redis-cluster:6379"
+    - name: NODE_ID
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+
+# Fanout Service Configuration
+fanoutService:
+  enabled: true
+  replicas: 3
+  
+  image:
+    repository: chatapp/fanout
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 9090
+    targetPort: 9090
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+      ephemeral-storage: 3Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 30
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 85
+  
+  pdb:
+    enabled: true
+    minAvailable: 2
+  
+  config:
+    celebrity_threshold: 100000
+    batch_size: 100
+    max_skip_messages: 1000
+  
+  env:
+    - name: REDIS_ADDR
+      value: "redis-cluster:6379"
+    - name: CELEBRITY_THRESHOLD
+      value: "100000"
+
+# API Server Configuration
+apiServer:
+  enabled: true
+  replicas: 3
+  
+  image:
+    repository: chatapp/api
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  service:
+    type: ClusterIP
+    port: 8081
+    targetPort: 8081
+  
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/rate-limit: "100"
+    hosts:
+      - host: api.chatapp.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: api-tls
+        hosts:
+          - api.chatapp.com
+  
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 70
+  
+  config:
+    rate_limiting:
+      enabled: true
+      requests_per_second: 100
+      burst_size: 200
+
+# Redis Configuration (if not using external)
+redis:
+  enabled: true
+  architecture: cluster
+  
+  cluster:
+    replicas: 3
+    nodes: 6
+  
+  resources:
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+    requests:
+      memory: 1Gi
+      cpu: 500m
+
+# Kafka Configuration (if not using external)
+kafka:
+  enabled: true
+  
+  replicas: 3
+  
+  resources:
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+    requests:
+      memory: 2Gi
+      cpu: 1000m
+  
+  persistence:
+    enabled: true
+    size: 100Gi
+  
+  zookeeper:
+    enabled: true
+    replicas: 3
+
+# ScyllaDB Configuration (if not using external)
+scylladb:
+  enabled: true
+  
+  datacenter:
+    name: dc1
+    racks:
+      - name: rack1
+        members: 3
+      - name: rack2
+        members: 3
+      - name: rack3
+        members: 3
+  
+  resources:
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+    requests:
+      memory: 2Gi
+      cpu: 1000m
+  
+  storage:
+    capacity: 500Gi
+    storageClassName: fast-ssd
+
+# Monitoring Configuration
+monitoring:
+  enabled: true
+  
+  prometheus:
+    enabled: true
+    retention: 30d
+    storage: 100Gi
+  
+  grafana:
+    enabled: true
+    admin:
+      user: admin
+      password: admin123
+    persistence:
+      enabled: true
+      size: 10Gi
+  
+  alertmanager:
+    enabled: true
+    config:
+      global:
+        smtp_smarthost: "smtp.gmail.com:587"
+        smtp_from: "alerts@chatapp.com"
+      receivers:
+        - name: 'default'
+          email_configs:
+            - to: 'team@chatapp.com'
+              subject: 'ChatApp Alert: {{ .GroupLabels.alertname }}'
+
+# Network Policies
+networkPolicy:
+  enabled: true
+  
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9090
+  
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: scylladb
+      ports:
+        - protocol: TCP
+          port: 9042
+
+# Pod Disruption Budgets
+podDisruptionBudgets:
+  enabled: true
+
+# Service Accounts
+serviceAccount:
+  create: true
+  name: chatapp
+  annotations: {}
+
+# RBAC Configuration
+rbac:
+  create: true
+
+# Secrets Configuration
+secrets:
+  tls:
+    enabled: false
+    cert: ""
+    key: ""
+  
+  api_keys:
+    enabled: true
+    keys: []
+
+# Ingress Configuration
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+  
+  tls:
+    enabled: true
+    secretName: chatapp-tls

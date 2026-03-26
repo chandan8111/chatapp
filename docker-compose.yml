@@ -1,0 +1,460 @@
+version: '3.8'
+
+services:
+  # Redis Cluster for Presence and Caching
+  redis-node-1:
+    image: redis:7-alpine
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    ports:
+      - "7001:6379"
+      - "17001:16379"
+    volumes:
+      - redis-node-1-data:/data
+    networks:
+      - chatapp-network
+    deploy:
+      resources:
+        limits:
+          memory: 2Gi
+          cpus: '1.0'
+        reservations:
+          memory: 1Gi
+          cpus: '0.5'
+
+  redis-node-2:
+    image: redis:7-alpine
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    ports:
+      - "7002:6379"
+      - "17002:16379"
+    volumes:
+      - redis-node-2-data:/data
+    networks:
+      - chatapp-network
+    depends_on:
+      - redis-node-1
+    deploy:
+      resources:
+        limits:
+          memory: 2Gi
+          cpus: '1.0'
+        reservations:
+          memory: 1Gi
+          cpus: '0.5'
+
+  redis-node-3:
+    image: redis:7-alpine
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    ports:
+      - "7003:6379"
+      - "17003:16379"
+    volumes:
+      - redis-node-3-data:/data
+    networks:
+      - chatapp-network
+    depends_on:
+      - redis-node-2
+    deploy:
+      resources:
+        limits:
+          memory: 2Gi
+          cpus: '1.0'
+        reservations:
+          memory: 1Gi
+          cpus: '0.5'
+
+  # Kafka Cluster
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - chatapp-network
+    deploy:
+      resources:
+        limits:
+          memory: 1Gi
+          cpus: '0.5'
+        reservations:
+          memory: 512Mi
+          cpus: '0.25'
+
+  kafka-1:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_LOG_CLEANUP_POLICY: delete
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+    networks:
+      - chatapp-network
+    deploy:
+      resources:
+        limits:
+          memory: 4Gi
+          cpus: '2.0'
+        reservations:
+          memory: 2Gi
+          cpus: '1.0'
+
+  kafka-2:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9093:9093"
+      - "9102:9102"
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:29093,PLAINTEXT_HOST://localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9102
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_LOG_CLEANUP_POLICY: delete
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+    networks:
+      - chatapp-network
+    deploy:
+      resources:
+        limits:
+          memory: 4Gi
+          cpus: '2.0'
+        reservations:
+          memory: 2Gi
+          cpus: '1.0'
+
+  kafka-3:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9094:9094"
+      - "9103:9103"
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:29094,PLAINTEXT_HOST://localhost:9094
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_JMX_PORT: 9103
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_LOG_CLEANUP_POLICY: delete
+    volumes:
+      - kafka-3-data:/var/lib/kafka/data
+    networks:
+      - chatapp-network
+    deploy:
+      resources:
+        limits:
+          memory: 4Gi
+          cpus: '2.0'
+        reservations:
+          memory: 2Gi
+          cpus: '1.0'
+
+  # ScyllaDB Cluster
+  scylla-node-1:
+    image: scylladb/scylla:5.2.0
+    command: --seeds=scylla-node-1,scylla-node-2 --broadcast-address=scylla-node-1 --listen-address=scylla-node-1 --broadcast-rpc-address=scylla-node-1 --rpc-address=scylla-node-1 --smp 2 --memory 2G --overprovisioned 1
+    ports:
+      - "9042:9042"
+      - "7000:7000"
+    volumes:
+      - scylla-node-1-data:/var/lib/scylla
+    networks:
+      - chatapp-network
+    deploy:
+      resources:
+        limits:
+          memory: 4Gi
+          cpus: '2.0'
+        reservations:
+          memory: 2Gi
+          cpus: '1.0'
+
+  scylla-node-2:
+    image: scylladb/scylla:5.2.0
+    command: --seeds=scylla-node-1,scylla-node-2 --broadcast-address=scylla-node-2 --listen-address=scylla-node-2 --broadcast-rpc-address=scylla-node-2 --rpc-address=scylla-node-2 --smp 2 --memory 2G --overprovisioned 1
+    ports:
+      - "9043:9042"
+      - "7001:7000"
+    volumes:
+      - scylla-node-2-data:/var/lib/scylla
+    networks:
+      - chatapp-network
+    depends_on:
+      - scylla-node-1
+    deploy:
+      resources:
+        limits:
+          memory: 4Gi
+          cpus: '2.0'
+        reservations:
+          memory: 2Gi
+          cpus: '1.0'
+
+  scylla-node-3:
+    image: scylladb/scylla:5.2.0
+    command: --seeds=scylla-node-1,scylla-node-2 --broadcast-address=scylla-node-3 --listen-address=scylla-node-3 --broadcast-rpc-address=scylla-node-3 --rpc-address=scylla-node-3 --smp 2 --memory 2G --overprovisioned 1
+    ports:
+      - "9044:9042"
+      - "7002:7000"
+    volumes:
+      - scylla-node-3-data:/var/lib/scylla
+    networks:
+      - chatapp-network
+    depends_on:
+      - scylla-node-2
+    deploy:
+      resources:
+        limits:
+          memory: 4Gi
+          cpus: '2.0'
+        reservations:
+          memory: 2Gi
+          cpus: '1.0'
+
+  # ChatApp Services
+  websocket-gateway:
+    build:
+      context: ..
+      dockerfile: build/gateway/Dockerfile
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      - REDIS_ADDR=redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
+      - KAFKA_BROKERS=kafka-1:29092,kafka-2:29093,kafka-3:29094
+      - SCYLLA_HOSTS=scylla-node-1:9042,scylla-node-2:9042,scylla-node-3:9042
+      - NODE_ID=gateway-1
+      - POD_NAME=websocket-gateway-1
+      - ENV=development
+    depends_on:
+      - redis-node-1
+      - kafka-1
+      - scylla-node-1
+    networks:
+      - chatapp-network
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          memory: 8Gi
+          cpus: '4.0'
+        reservations:
+          memory: 2Gi
+          cpus: '1.0'
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  message-processor:
+    build:
+      context: ..
+      dockerfile: build/processor/Dockerfile
+    ports:
+      - "9091:9090"
+    environment:
+      - KAFKA_BROKERS=kafka-1:29092,kafka-2:29093,kafka-3:29094
+      - SCYLLA_HOSTS=scylla-node-1:9042,scylla-node-2:9042,scylla-node-3:9042
+      - REDIS_ADDR=redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
+      - CONSUMER_GROUP=message-processors
+      - NODE_ID=processor-1
+      - ENV=development
+    depends_on:
+      - kafka-1
+      - scylla-node-1
+      - redis-node-1
+    networks:
+      - chatapp-network
+    deploy:
+      replicas: 5
+      resources:
+        limits:
+          memory: 4Gi
+          cpus: '2.0'
+        reservations:
+          memory: 1Gi
+          cpus: '0.5'
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  presence-service:
+    build:
+      context: ..
+      dockerfile: build/presence/Dockerfile
+    ports:
+      - "9092:9090"
+    environment:
+      - REDIS_ADDR=redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
+      - KAFKA_BROKERS=kafka-1:29092,kafka-2:29093,kafka-3:29094
+      - NODE_ID=presence-1
+      - ENV=development
+    depends_on:
+      - redis-node-1
+      - kafka-1
+    networks:
+      - chatapp-network
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 2Gi
+          cpus: '1.0'
+        reservations:
+          memory: 512Mi
+          cpus: '0.25'
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  fanout-service:
+    build:
+      context: ..
+      dockerfile: build/fanout/Dockerfile
+    ports:
+      - "9093:9090"
+    environment:
+      - REDIS_ADDR=redis-node-1:6379,redis-node-2:6379,redis-node-3:6379
+      - KAFKA_BROKERS=kafka-1:29092,kafka-2:29093,kafka-3:29094
+      - SCYLLA_HOSTS=scylla-node-1:9042,scylla-node-2:9042,scylla-node-3:9042
+      - NODE_ID=fanout-1
+      - ENV=development
+    depends_on:
+      - redis-node-1
+      - kafka-1
+      - scylla-node-1
+    networks:
+      - chatapp-network
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          memory: 4Gi
+          cpus: '2.0'
+        reservations:
+          memory: 1Gi
+          cpus: '0.5'
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9094:9090"
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - chatapp-network
+    deploy:
+      resources:
+        limits:
+          memory: 2Gi
+          cpus: '1.0'
+        reservations:
+          memory: 1Gi
+          cpus: '0.5'
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ../monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - chatapp-network
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 1Gi
+          cpus: '0.5'
+        reservations:
+          memory: 512Mi
+          cpus: '0.25'
+
+volumes:
+  redis-node-1-data:
+  redis-node-2-data:
+  redis-node-3-data:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
+  scylla-node-1-data:
+  scylla-node-2-data:
+  scylla-node-3-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  chatapp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

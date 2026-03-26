@@ -1,0 +1,192 @@
+groups:
+  - name: chatapp_alerts
+    rules:
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: rate(websocket_gateway_errors_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          service: websocket-gateway
+        annotations:
+          summary: "High error rate in WebSocket Gateway"
+          description: "Error rate is above 5% for more than 5 minutes"
+
+      # High Latency
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, rate(websocket_gateway_message_duration_seconds_bucket[5m])) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          service: websocket-gateway
+        annotations:
+          summary: "High latency in message delivery"
+          description: "99th percentile latency is above 100ms"
+
+      # Connection Limit Approaching
+      - alert: ConnectionLimitApproaching
+        expr: (websocket_gateway_active_connections / websocket_gateway_max_connections) > 0.85
+        for: 2m
+        labels:
+          severity: warning
+          service: websocket-gateway
+        annotations:
+          summary: "Connection limit approaching"
+          description: "Active connections are above 85% of maximum"
+
+      # Connection Limit Exceeded
+      - alert: ConnectionLimitExceeded
+        expr: (websocket_gateway_active_connections / websocket_gateway_max_connections) > 0.95
+        for: 1m
+        labels:
+          severity: critical
+          service: websocket-gateway
+        annotations:
+          summary: "Connection limit exceeded"
+          description: "Active connections are above 95% of maximum"
+
+      # Kafka Consumer Lag
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_group_lag{group="message-processors"} > 1000
+        for: 5m
+        labels:
+          severity: warning
+          service: message-processor
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer lag is above 1000 messages"
+
+      # Kafka Consumer Lag Critical
+      - alert: KafkaConsumerLagCritical
+        expr: kafka_consumer_group_lag{group="message-processors"} > 5000
+        for: 5m
+        labels:
+          severity: critical
+          service: message-processor
+        annotations:
+          summary: "Critical Kafka consumer lag"
+          description: "Consumer lag is above 5000 messages"
+
+      # Redis Memory Usage
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: presence-service
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis memory usage is above 80%"
+
+      # Redis Memory Critical
+      - alert: RedisMemoryCritical
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 2m
+        labels:
+          severity: critical
+          service: presence-service
+        annotations:
+          summary: "Redis memory usage critical"
+          description: "Redis memory usage is above 90%"
+
+      # ScyllaDB High Latency
+      - alert: ScyllaDBHighLatency
+        expr: scylladb_storage_proxy_coordinator_read_latency_summary{quantile="0.99"} > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: storage
+        annotations:
+          summary: "High ScyllaDB read latency"
+          description: "99th percentile read latency is above 100ms"
+
+      # ScyllaDB Write Latency
+      - alert: ScyllaDBWriteLatency
+        expr: scylladb_storage_proxy_coordinator_write_latency_summary{quantile="0.99"} > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: storage
+        annotations:
+          summary: "High ScyllaDB write latency"
+          description: "99th percentile write latency is above 50ms"
+
+      # CPU Usage High
+      - alert: CPUUsageHigh
+        expr: rate(process_cpu_seconds_total[5m]) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80%"
+
+      # Memory Usage High
+      - alert: MemoryUsageHigh
+        expr: (process_resident_memory_bytes / container_spec_memory_limit_bytes) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 85%"
+
+      # Memory Usage Critical
+      - alert: MemoryUsageCritical
+        expr: (process_resident_memory_bytes / container_spec_memory_limit_bytes) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical memory usage"
+          description: "Memory usage is above 95%"
+
+      # Pod Restarting
+      - alert: PodRestarting
+        expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod is restarting"
+          description: "Pod has restarted in the last 15 minutes"
+
+      # Service Down
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service is down"
+          description: "Service {{ $labels.job }} is down"
+
+      # HPA Scaling Events
+      - alert: HPAScalingUp
+        expr: increase(kube_hpa_status_current_replicas[5m]) > 0
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "HPA scaling up"
+          description: "HPA is scaling up replicas"
+
+      # Disk Space
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is below 20%"
+
+      # Network Errors
+      - alert: NetworkErrors
+        expr: rate(node_network_receive_errs_total[5m]) > 10
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Network errors detected"
+          description: "High rate of network receive errors"

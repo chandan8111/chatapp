@@ -1,0 +1,391 @@
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: websocket-gateway-hpa
+  namespace: chatapp
+  labels:
+    app: websocket-gateway
+    component: gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: websocket-gateway
+  minReplicas: 3
+  maxReplicas: 100
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: websocket_connections
+      target:
+        type: AverageValue
+        averageValue: "150000"
+  - type: External
+    external:
+      metric:
+        name: redis_connection_pressure
+        selector:
+          matchLabels:
+            app: websocket-gateway
+      target:
+        type: Value
+        value: "0.8"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 10
+        periodSeconds: 30
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 5
+        periodSeconds: 60
+      selectPolicy: Min
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: message-processor-hpa
+  namespace: chatapp
+  labels:
+    app: message-processor
+    component: processor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: message-processor
+  minReplicas: 5
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85
+  - type: External
+    external:
+      metric:
+        name: kafka_consumer_lag
+        selector:
+          matchLabels:
+            topic: chat-messages
+      target:
+        type: Value
+        value: "1000"
+  - type: External
+    external:
+      metric:
+        name: scylladb_write_latency
+        selector:
+          matchLabels:
+            app: message-processor
+      target:
+        type: Value
+        value: "10ms"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 5
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 600
+      policies:
+      - type: Percent
+        value: 20
+        periodSeconds: 120
+      - type: Pods
+        value: 2
+        periodSeconds: 120
+      selectPolicy: Min
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: presence-service-hpa
+  namespace: chatapp
+  labels:
+    app: presence-service
+    component: presence
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: presence-service
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: External
+    external:
+      metric:
+        name: redis_memory_usage
+        selector:
+          matchLabels:
+            app: presence-service
+      target:
+        type: Value
+        value: "70Gi"
+  - type: External
+    external:
+      metric:
+        name: heartbeat_processing_rate
+        selector:
+          matchLabels:
+            app: presence-service
+      target:
+        type: Value
+        value: "50000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 90
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 45
+      - type: Pods
+        value: 3
+        periodSeconds: 45
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 90
+      - type: Pods
+        value: 1
+        periodSeconds: 90
+      selectPolicy: Min
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fanout-service-hpa
+  namespace: chatapp
+  labels:
+    app: fanout-service
+    component: fanout
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fanout-service
+  minReplicas: 3
+  maxReplicas: 30
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85
+  - type: External
+    external:
+      metric:
+        name: fanout_queue_depth
+        selector:
+          matchLabels:
+            app: fanout-service
+      target:
+        type: Value
+        value: "10000"
+  - type: External
+    external:
+      metric:
+        name: celebrity_message_rate
+        selector:
+          matchLabels:
+            app: fanout-service
+      target:
+        type: Value
+        value: "1000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+      - type: Percent
+        value: 200
+        periodSeconds: 15
+      - type: Pods
+        value: 10
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 180
+      policies:
+      - type: Percent
+        value: 30
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Min
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: websocket-gateway-pdb
+  namespace: chatapp
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: websocket-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: message-processor-pdb
+  namespace: chatapp
+spec:
+  minAvailable: 3
+  selector:
+    matchLabels:
+      app: message-processor
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: presence-service-pdb
+  namespace: chatapp
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: presence-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fanout-service-pdb
+  namespace: chatapp
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: fanout-service
+---
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: websocket-gateway-metrics
+  namespace: chatapp
+  labels:
+    app: websocket-gateway
+spec:
+  selector:
+    matchLabels:
+      app: websocket-gateway
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+---
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: message-processor-metrics
+  namespace: chatapp
+  labels:
+    app: message-processor
+spec:
+  selector:
+    matchLabels:
+      app: message-processor
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hpa-scaling-config
+  namespace: chatapp
+data:
+  scaling.yaml: |
+    # Connection-based scaling thresholds
+    connection_thresholds:
+      low: 50000      # Scale down when < 50k connections
+      target: 150000  # Target 150k connections per pod
+      high: 180000    # Scale up when > 180k connections
+      max: 200000     # Max 200k connections per pod
+    
+    # Rate limiting for scaling
+    scaling_limits:
+      max_scale_up_percent: 200    # Max 200% scale up per event
+      max_scale_down_percent: 50   # Max 50% scale down per event
+      scale_up_cooldown: 30s       # Wait 30s between scale ups
+      scale_down_cooldown: 300s    # Wait 5min between scale downs
+    
+    # Resource allocation per connection
+    resources_per_connection:
+      cpu_cores: 0.0005    # 0.5m CPU per connection
+      memory_mb: 0.5       # 0.5MB memory per connection
+    
+    # Celebrity message handling
+    celebrity_thresholds:
+      follower_count: 100000
+      message_rate: 1000
+      fanout_batch_size: 100
+    
+    # Health check thresholds
+    health_checks:
+      cpu_threshold: 90
+      memory_threshold: 90
+      latency_threshold: 100ms
+      error_rate_threshold: 0.05
