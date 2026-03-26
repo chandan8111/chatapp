@@ -31,7 +31,8 @@
     "framer-motion": "^10.12.16",
     "zustand": "^4.3.8",
     "crypto-js": "^4.1.1",
-    "libsignal": "^2.0.1"
+    "libsignal": "^2.0.1",
+    "recharts": "^2.5.0"
   },
   "scripts": {
     "start": "react-scripts start",
