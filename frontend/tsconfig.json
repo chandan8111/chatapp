@@ -1,10 +1,10 @@
 {
   "compilerOptions": {
-    "target": "es5",
+    "target": "es2020",
     "lib": [
       "dom",
       "dom.iterable",
-      "es6"
+      "es2020"
     ],
     "allowJs": true,
     "skipLibCheck": true,
@@ -19,18 +19,20 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": [
-      "node",
-      "jest",
-      "react",
-      "react-dom"
-    ]
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
   "include": [
-    "src"
+    "src/**/*",
+    "src/**/*.tsx",
+    "src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "build"
+    "build",
+    "dist"
   ]
 }

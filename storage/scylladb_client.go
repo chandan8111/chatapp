@@ -188,12 +188,16 @@ func (r *MessageRepository) GetMessages(ctx context.Context, conversationID stri
 	`).Bind(convoUUID, bucketID, limit)
 	
 	iter := query.Iter()
-	var message Message
-	for iter.Scan(&message.ConversationID, &message.BucketID, &message.MessageID,
-		&message.SenderID, &message.MessageType, &message.Ciphertext,
-		&message.EphemeralPublicKey, &message.Metadata, &message.CreatedAt, &message.UpdatedAt) {
-		
-		messages = append(messages, &message)
+	for {
+		var message Message
+		if !iter.Scan(&message.ConversationID, &message.BucketID, &message.MessageID,
+			&message.SenderID, &message.MessageType, &message.Ciphertext,
+			&message.EphemeralPublicKey, &message.Metadata, &message.CreatedAt, &message.UpdatedAt) {
+			break
+		}
+		// Allocate new variable to avoid pointer to loop variable issue
+		msgCopy := message
+		messages = append(messages, &msgCopy)
 	}
 	
 	if err := iter.Close(); err != nil {
@@ -226,12 +230,16 @@ func (r *MessageRepository) GetMessagesByTimeRange(ctx context.Context, conversa
 		`).Bind(convoUUID, bucketID, startTime, endTime, limit)
 		
 		iter := query.Iter()
-		var message Message
-		for iter.Scan(&message.ConversationID, &message.BucketID, &message.MessageID,
-			&message.SenderID, &message.MessageType, &message.Ciphertext,
-			&message.EphemeralPublicKey, &message.Metadata, &message.CreatedAt, &message.UpdatedAt) {
-			
-			messages = append(messages, &message)
+		for {
+			var message Message
+			if !iter.Scan(&message.ConversationID, &message.BucketID, &message.MessageID,
+				&message.SenderID, &message.MessageType, &message.Ciphertext,
+				&message.EphemeralPublicKey, &message.Metadata, &message.CreatedAt, &message.UpdatedAt) {
+				break
+			}
+			// Allocate new variable to avoid pointer to loop variable issue
+			msgCopy := message
+			messages = append(messages, &msgCopy)
 		}
 		
 		if err := iter.Close(); err != nil {
@@ -324,12 +332,16 @@ func (r *ConversationRepository) GetParticipants(ctx context.Context, conversati
 	`).Bind(uuid.MustParse(conversationID))
 	
 	iter := query.Iter()
-	var participant ConversationParticipant
-	for iter.Scan(&participant.ConversationID, &participant.UserID, &participant.Role,
-		&participant.JoinedAt, &participant.LastReadMsgID, &participant.IsActive,
-		&participant.Permissions) {
-		
-		participants = append(participants, &participant)
+	for {
+		var participant ConversationParticipant
+		if !iter.Scan(&participant.ConversationID, &participant.UserID, &participant.Role,
+			&participant.JoinedAt, &participant.LastReadMsgID, &participant.IsActive,
+			&participant.Permissions) {
+			break
+		}
+		// Allocate new variable to avoid pointer to loop variable issue
+		partCopy := participant
+		participants = append(participants, &partCopy)
 	}
 	
 	if err := iter.Close(); err != nil {
@@ -369,13 +381,17 @@ func (r *UserRepository) GetUserConversations(ctx context.Context, userID string
 	`).Bind(uuid.MustParse(userID), limit)
 	
 	iter := query.Iter()
-	var userConv UserConversation
-	for iter.Scan(&userConv.UserID, &userConv.ConversationID, &userConv.LastMessageID,
-		&userConv.LastMessageAt, &userConv.UnreadCount, &userConv.IsArchived,
-		&userConv.IsMuted, &userConv.ConversationType, &userConv.DisplayName,
-		&userConv.AvatarURL, &userConv.ParticipantCount, &userConv.CreatedAt, &userConv.UpdatedAt) {
-		
-		conversations = append(conversations, &userConv)
+	for {
+		var userConv UserConversation
+		if !iter.Scan(&userConv.UserID, &userConv.ConversationID, &userConv.LastMessageID,
+			&userConv.LastMessageAt, &userConv.UnreadCount, &userConv.IsArchived,
+			&userConv.IsMuted, &userConv.ConversationType, &userConv.DisplayName,
+			&userConv.AvatarURL, &userConv.ParticipantCount, &userConv.CreatedAt, &userConv.UpdatedAt) {
+			break
+		}
+		// Allocate new variable to avoid pointer to loop variable issue
+		ucCopy := userConv
+		conversations = append(conversations, &ucCopy)
 	}
 	
 	if err := iter.Close(); err != nil {
@@ -468,14 +484,18 @@ func (r *PresenceRepository) GetOnlineUsers(ctx context.Context, userIDs []strin
 	`).Bind(uuids)
 	
 	iter := query.Iter()
-	var presence UserPresence
 	result := make(map[string]*UserPresence)
 	
-	for iter.Scan(&presence.UserID, &presence.Online, &presence.LastSeen,
-		&presence.CurrentNodeID, &presence.DeviceCount, &presence.ActiveDevices,
-		&presence.StatusText, &presence.StatusEmoji, &presence.UpdatedAt) {
-		
-		result[presence.UserID.String()] = &presence
+	for {
+		var presence UserPresence
+		if !iter.Scan(&presence.UserID, &presence.Online, &presence.LastSeen,
+			&presence.CurrentNodeID, &presence.DeviceCount, &presence.ActiveDevices,
+			&presence.StatusText, &presence.StatusEmoji, &presence.UpdatedAt) {
+			break
+		}
+		// Allocate new variable to avoid pointer to loop variable issue
+		presCopy := presence
+		result[presence.UserID.String()] = &presCopy
 	}
 	
 	if err := iter.Close(); err != nil {
@@ -529,13 +549,17 @@ func (r *MessageRepository) GetMessagesAsync(ctx context.Context, conversationID
 		`).Bind(convoUUID, bucketID, limit)
 		
 		iter := query.Iter()
-		var message Message
-		for iter.Scan(&message.ConversationID, &message.BucketID, &message.MessageID,
-			&message.SenderID, &message.MessageType, &message.Ciphertext,
-			&message.EphemeralPublicKey, &message.Metadata, &message.CreatedAt, &message.UpdatedAt) {
-			
+		for {
+			var message Message
+			if !iter.Scan(&message.ConversationID, &message.BucketID, &message.MessageID,
+				&message.SenderID, &message.MessageType, &message.Ciphertext,
+				&message.EphemeralPublicKey, &message.Metadata, &message.CreatedAt, &message.UpdatedAt) {
+				break
+			}
+			// Allocate new variable to avoid pointer to loop variable issue
+			msgCopy := message
 			select {
-			case ch <- &message:
+			case ch <- &msgCopy:
 			case <-ctx.Done():
 				iter.Close()
 				return

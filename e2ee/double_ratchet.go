@@ -577,7 +577,10 @@ func parsePublicKey(bytes []byte) (*ecdsa.PublicKey, error) {
 func generateMessageID() string {
 	timestamp := time.Now().UnixNano()
 	randomBytes := make([]byte, 8)
-	rand.Read(randomBytes)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Fallback to timestamp-based ID if random generation fails
+		return fmt.Sprintf("%x-%x", timestamp, timestamp)
+	}
 	
 	return fmt.Sprintf("%x-%x", timestamp, randomBytes)
 }

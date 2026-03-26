@@ -11,6 +11,8 @@ import (
 
 	"github.com/IBM/sarama"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/chatapp/proto"
 )
 
 const (
@@ -138,7 +140,7 @@ func NewMessageProducer(brokers []string) (*MessageProducer, error) {
 	}, nil
 }
 
-func (mp *MessageProducer) ProduceChatMessage(ctx context.Context, chatMsg *ChatMessage) error {
+func (mp *MessageProducer) ProduceChatMessage(ctx context.Context, chatMsg *proto.ChatMessage) error {
 	// Serialize message
 	messageBytes, err := proto.Marshal(chatMsg)
 	if err != nil {
@@ -169,7 +171,7 @@ func (mp *MessageProducer) ProduceChatMessage(ctx context.Context, chatMsg *Chat
 	return nil
 }
 
-func (mp *MessageProducer) ProduceDeliveryReceipt(ctx context.Context, receipt *DeliveryReceipt) error {
+func (mp *MessageProducer) ProduceDeliveryReceipt(ctx context.Context, receipt *proto.DeliveryReceipt) error {
 	receiptBytes, err := proto.Marshal(receipt)
 	if err != nil {
 		return fmt.Errorf("failed to marshal delivery receipt: %w", err)
@@ -196,7 +198,7 @@ func (mp *MessageProducer) ProduceDeliveryReceipt(ctx context.Context, receipt *
 	return nil
 }
 
-func (mp *MessageProducer) ProducePresenceUpdate(ctx context.Context, heartbeat *Heartbeat) error {
+func (mp *MessageProducer) ProducePresenceUpdate(ctx context.Context, heartbeat *proto.Heartbeat) error {
 	heartbeatBytes, err := proto.Marshal(heartbeat)
 	if err != nil {
 		return fmt.Errorf("failed to marshal heartbeat: %w", err)
@@ -296,7 +298,7 @@ func (mc *MessageConsumer) ConsumeClaim(session sarama.ConsumerGroupSession, cla
 }
 
 func (h *ChatMessageHandler) Handle(ctx context.Context, message *sarama.ConsumerMessage) error {
-	var chatMsg ChatMessage
+	var chatMsg proto.ChatMessage
 	if err := proto.Unmarshal(message.Value, &chatMsg); err != nil {
 		return fmt.Errorf("failed to unmarshal chat message: %w", err)
 	}
@@ -306,7 +308,7 @@ func (h *ChatMessageHandler) Handle(ctx context.Context, message *sarama.Consume
 }
 
 func (h *DeliveryReceiptHandler) Handle(ctx context.Context, message *sarama.ConsumerMessage) error {
-	var receipt DeliveryReceipt
+	var receipt proto.DeliveryReceipt
 	if err := proto.Unmarshal(message.Value, &receipt); err != nil {
 		return fmt.Errorf("failed to unmarshal delivery receipt: %w", err)
 	}
@@ -315,7 +317,7 @@ func (h *DeliveryReceiptHandler) Handle(ctx context.Context, message *sarama.Con
 }
 
 func (h *PresenceHandler) Handle(ctx context.Context, message *sarama.ConsumerMessage) error {
-	var heartbeat Heartbeat
+	var heartbeat proto.Heartbeat
 	if err := proto.Unmarshal(message.Value, &heartbeat); err != nil {
 		return fmt.Errorf("failed to unmarshal heartbeat: %w", err)
 	}
@@ -333,7 +335,7 @@ func NewFanoutService(redisClient RedisClient, kafkaProducer *MessageProducer) *
 	}
 }
 
-func (fs *FanoutService) FanoutMessage(ctx context.Context, chatMsg *ChatMessage) error {
+func (fs *FanoutService) FanoutMessage(ctx context.Context, chatMsg *proto.ChatMessage) error {
 	// Get conversation participants
 	participants, err := fs.getConversationParticipants(ctx, chatMsg.ConversationId)
 	if err != nil {
@@ -353,7 +355,7 @@ func (fs *FanoutService) FanoutMessage(ctx context.Context, chatMsg *ChatMessage
 	return fs.fanoutRegularMessage(ctx, chatMsg, participants)
 }
 
-func (fs *FanoutService) fanoutRegularMessage(ctx context.Context, chatMsg *ChatMessage, participants []string) error {
+func (fs *FanoutService) fanoutRegularMessage(ctx context.Context, chatMsg *proto.ChatMessage, participants []string) error {
 	// For regular messages, push directly to online users
 	for _, participant := range participants {
 		if participant == chatMsg.SenderId {
@@ -383,7 +385,7 @@ func (fs *FanoutService) fanoutRegularMessage(ctx context.Context, chatMsg *Chat
 	return nil
 }
 
-func (fs *FanoutService) fanoutCelebrityMessage(ctx context.Context, chatMsg *ChatMessage, participants []string) error {
+func (fs *FanoutService) fanoutCelebrityMessage(ctx context.Context, chatMsg *proto.ChatMessage, participants []string) error {
 	// For celebrity messages, use hybrid push/pull with distributed processing
 	
 	// 1. Store message in offline storage for all participants
@@ -482,7 +484,7 @@ func (fs *FanoutService) getOnlineParticipants(ctx context.Context, participants
 	return online
 }
 
-func (fs *FanoutService) pushToWebSocketGateway(ctx context.Context, userID string, chatMsg *ChatMessage) error {
+func (fs *FanoutService) pushToWebSocketGateway(ctx context.Context, userID string, chatMsg *proto.ChatMessage) error {
 	// Find which WebSocket gateway node the user is connected to
 	nodeID, err := fs.redisClient.GetUserNodeID(ctx, userID)
 	if err != nil {
@@ -498,7 +500,7 @@ func (fs *FanoutService) pushToWebSocketGateway(ctx context.Context, userID stri
 	return fs.redisClient.PublishToNode(ctx, nodeID, messageBytes)
 }
 
-func (fs *FanoutService) pushBatchToWebSocketGateways(ctx context.Context, userIDs []string, chatMsg *ChatMessage) error {
+func (fs *FanoutService) pushBatchToWebSocketGateways(ctx context.Context, userIDs []string, chatMsg *proto.ChatMessage) error {
 	// Group users by node
 	nodeUsers := make(map[string][]string)
 	
@@ -522,16 +524,16 @@ func (fs *FanoutService) pushBatchToWebSocketGateways(ctx context.Context, userI
 	return nil
 }
 
-func (fs *FanoutService) storeOfflineMessage(ctx context.Context, userID string, chatMsg *ChatMessage) error {
+func (fs *FanoutService) storeOfflineMessage(ctx context.Context, userID string, chatMsg *proto.ChatMessage) error {
 	return fs.redisClient.StoreOfflineMessage(ctx, userID, chatMsg)
 }
 
-func (fs *FanoutService) sendBatchToNode(ctx context.Context, nodeID string, userIDs []string, chatMsg *ChatMessage) error {
+func (fs *FanoutService) sendBatchToNode(ctx context.Context, nodeID string, userIDs []string, chatMsg *proto.ChatMessage) error {
 	// Implement batch sending to specific WebSocket gateway node
 	return fs.redisClient.PublishBatchToNode(ctx, nodeID, userIDs, chatMsg)
 }
 
-func (fs *FanoutService) sendPushNotifications(ctx context.Context, participants []string, chatMsg *ChatMessage) error {
+func (fs *FanoutService) sendPushNotifications(ctx context.Context, participants []string, chatMsg *proto.ChatMessage) error {
 	// Implement push notification sending
 	return nil
 }
@@ -552,13 +554,13 @@ type RedisClient interface {
 	GetOnlineUsersInBatch(ctx context.Context, userIDs []string) (map[string]bool, error)
 	GetUserNodeID(ctx context.Context, userID string) (string, error)
 	PublishToNode(ctx context.Context, nodeID string, message []byte) error
-	PublishBatchToNode(ctx context.Context, nodeID string, userIDs []string, chatMsg *ChatMessage) error
-	StoreOfflineMessage(ctx context.Context, userID string, chatMsg *ChatMessage) error
+	PublishBatchToNode(ctx context.Context, nodeID string, userIDs []string, chatMsg *proto.ChatMessage) error
+	StoreOfflineMessage(ctx context.Context, userID string, chatMsg *proto.ChatMessage) error
 }
 
 // PushProvider interface for mobile push notifications
 type PushProvider interface {
-	SendPushNotification(ctx context.Context, userID string, message *ChatMessage) error
+	SendPushNotification(ctx context.Context, userID string, message *proto.ChatMessage) error
 }
 
 // FCMClient interface for Firebase Cloud Messaging
@@ -568,5 +570,5 @@ type FCMClient interface {
 
 // PresenceService interface for presence updates
 type PresenceService interface {
-	UpdatePresence(ctx context.Context, heartbeat *Heartbeat) error
+	UpdatePresence(ctx context.Context, heartbeat *proto.Heartbeat) error
 }

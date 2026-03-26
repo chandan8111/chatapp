@@ -37,6 +37,13 @@ func NewAPIServer(port int, logger *logging.Logger) *APIServer {
 		logger:         logger,
 		errorHandler: errors.NewErrorHandler(logger.Logger, "api-server"),
 		port:           port,
+		
+		// Initialize handlers with proper parameters
+		presenceHandler:     NewPresenceHandler(nil, logger.Logger),
+		messageHandler:      NewMessageHandler(nil, logger.Logger),
+		userHandler:         NewUserHandler(nil, logger.Logger),
+		conversationHandler: NewConversationHandler(nil, logger.Logger),
+		analyticsHandler:    NewAnalyticsHandler(logger.Logger),
 	}
 	
 	server.setupRoutes()
@@ -56,11 +63,13 @@ func (s *APIServer) setupRoutes() {
 	api := s.router.PathPrefix("/api/v1").Subrouter()
 	
 	// Presence routes
-	api.HandleFunc("/presence/{user_id}", s.presenceHandler.GetPresence).Methods("GET")\tapi.HandleFunc("/presence/batch", s.presenceHandler.GetPresenceBatch).Methods("POST")
+	api.HandleFunc("/presence/{user_id}", s.presenceHandler.GetPresence).Methods("GET")
+	api.HandleFunc("/presence/batch", s.presenceHandler.GetPresenceBatch).Methods("POST")
 	api.HandleFunc("/presence/online", s.presenceHandler.GetOnlineUsers).Methods("GET")
 	
 	// Message routes
-	api.HandleFunc("/messages", s.messageHandler.SendMessage).Methods("POST")\tapi.HandleFunc("/messages/{message_id}", s.messageHandler.GetMessage).Methods("GET")
+	api.HandleFunc("/messages", s.messageHandler.SendMessage).Methods("POST")
+	api.HandleFunc("/messages/{message_id}", s.messageHandler.GetMessage).Methods("GET")
 	api.HandleFunc("/messages/{message_id}/status", s.messageHandler.UpdateMessageStatus).Methods("PUT")
 	api.HandleFunc("/conversations/{conversation_id}/messages", s.messageHandler.GetConversationMessages).Methods("GET")
 	api.HandleFunc("/conversations/{conversation_id}/messages", s.messageHandler.SendConversationMessage).Methods("POST")

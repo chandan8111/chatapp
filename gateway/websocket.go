@@ -15,6 +15,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/chatapp/proto"
 )
 
 const (
@@ -123,7 +125,7 @@ func (h *Hub) run() {
 			log.Printf("User %s disconnected. Total connections: %d", conn.userID, atomic.LoadInt64(&h.connectionCount))
 
 		case message := <-h.broadcast:
-			h.mu.RLock()
+			h.mu.Lock()
 			for _, conn := range h.connections {
 				select {
 				case conn.send <- message:
@@ -132,7 +134,7 @@ func (h *Hub) run() {
 					delete(h.connections, conn.userID)
 				}
 			}
-			h.mu.RUnlock()
+			h.mu.Unlock()
 
 		case <-ticker.C:
 			h.flushHeartbeatBatch()
@@ -268,15 +270,15 @@ func (c *Connection) writePump() {
 
 func (c *Connection) handleMessage(message []byte, hub *Hub) {
 	// Parse protobuf message
-	var chatMsg ChatMessage
+	var chatMsg proto.ChatMessage
 	if err := proto.Unmarshal(message, &chatMsg); err != nil {
 		log.Printf("Failed to unmarshal message: %v", err)
 		return
 	}
 
 	// Validate message
-	if chatMsg.SenderId != c.userID {
-		log.Printf("Message sender mismatch: expected %s, got %s", c.userID, chatMsg.SenderId)
+	if chatMsg.GetSenderId() != c.userID {
+		log.Printf("Message sender mismatch: expected %s, got %s", c.userID, chatMsg.GetSenderId())
 		return
 	}
 
