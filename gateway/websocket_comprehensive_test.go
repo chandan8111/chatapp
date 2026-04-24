@@ -2,16 +2,20 @@ package gateway
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/chatapp/proto"
 )
@@ -79,7 +83,7 @@ func (m *MockWebSocket) NextWriter(messageType int) (websocket.NextWriter, error
 // TestConnectionMessageHandling tests the message handling logic
 func TestConnectionMessageHandling(t *testing.T) {
 	logger := zaptest.NewLogger(t)
-	
+
 	tests := []struct {
 		name          string
 		message       *proto.ChatMessage
@@ -145,7 +149,7 @@ func TestConnectionMessageHandling(t *testing.T) {
 			// Create hub with mock
 			mockRedis := new(MockRedisClient)
 			hub := NewHub(mockRedis, logger)
-			
+
 			receivedBroadcast := false
 			go func() {
 				select {
@@ -173,7 +177,7 @@ func TestConnectionLifecycle(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockRedis := new(MockRedisClient)
 	hub := NewHub(mockRedis, logger)
-	
+
 	// Start hub in background
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -222,7 +226,7 @@ func TestConcurrentConnectionHandling(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockRedis := new(MockRedisClient)
 	hub := NewHub(mockRedis, logger)
-	
+
 	// Start hub in background
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -236,7 +240,7 @@ func TestConcurrentConnectionHandling(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
+
 			conn := &Connection{
 				userID:   fmt.Sprintf("user-%d", id),
 				deviceID: fmt.Sprintf("device-%d", id),
@@ -268,7 +272,7 @@ func TestHeartbeatBatching(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockRedis := new(MockRedisClient)
 	mockPipeline := new(MockRedisClient)
-	
+
 	// Setup mock expectations
 	mockRedis.On("Pipeline").Return(mockPipeline)
 	mockPipeline.On("SetBit", mock.Anything, "presence:online", mock.AnythingOfType("int64"), 1).Return(&redis.IntCmd{})
@@ -276,7 +280,7 @@ func TestHeartbeatBatching(t *testing.T) {
 	mockPipeline.On("Exec", mock.Anything).Return([]redis.Cmder{}, nil)
 
 	hub := NewHub(mockRedis, logger)
-	
+
 	// Add users to heartbeat batch
 	userIDs := []string{"user-1", "user-2", "user-3"}
 	for _, userID := range userIDs {
@@ -337,10 +341,10 @@ func TestMessageValidation(t *testing.T) {
 		{
 			name: "Empty conversation ID",
 			message: &proto.ChatMessage{
-				MessageId:  uuid.New().String(),
-				SenderId:   "user-123",
-				Timestamp:  time.Now().UnixNano(),
-				Ciphertext: []byte("encrypted content"),
+				MessageId:   uuid.New().String(),
+				SenderId:    "user-123",
+				Timestamp:   time.Now().UnixNano(),
+				Ciphertext:  []byte("encrypted content"),
 				MessageType: 0,
 			},
 			expectValid: false,
@@ -396,12 +400,12 @@ func validateChatMessage(msg *proto.ChatMessage) bool {
 func TestConnectionLimit(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 	mockRedis := new(MockRedisClient)
-	
+
 	// Create gateway with low connection limit for testing
 	gateway := &WebSocketGateway{
 		hub: NewHub(mockRedis, logger),
 	}
-	
+
 	// Set connection limit to 5 for testing
 	originalLimit := maxConnectionsPerNode
 	maxConnectionsPerNode = 5
@@ -419,10 +423,10 @@ func TestConnectionLimit(t *testing.T) {
 	// Test connection limit enforcement
 	req, err := http.NewRequest("GET", "/ws?user_id=user-6&device_id=device-6&node_id=node-1", nil)
 	require.NoError(t, err)
-	
+
 	rr := httptest.NewRecorder()
 	gateway.handleWebSocket(rr, req)
-	
+
 	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
 }
 
@@ -431,7 +435,7 @@ func BenchmarkMessageHandling(b *testing.B) {
 	logger := zaptest.NewLogger(b)
 	mockRedis := new(MockRedisClient)
 	hub := NewHub(mockRedis, logger)
-	
+
 	message := &proto.ChatMessage{
 		MessageId:      uuid.New().String(),
 		ConversationId: uuid.New().String(),
@@ -440,10 +444,10 @@ func BenchmarkMessageHandling(b *testing.B) {
 		Ciphertext:     make([]byte, 1024), // 1KB message
 		MessageType:    0,
 	}
-	
+
 	messageBytes, err := proto.Marshal(message)
 	require.NoError(b, err)
-	
+
 	conn := &Connection{
 		userID: "user-123",
 		send:   make(chan []byte, 256),

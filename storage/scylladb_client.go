@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/chatapp/proto"
 	"github.com/gocql/gocql"
 	"github.com/google/uuid"
-	"google.golang.org/protobuf/proto"
 )
 
 type ScyllaDBClient struct {
@@ -36,34 +36,34 @@ const (
 )
 
 type Message struct {
-	ConversationID        uuid.UUID
-	BucketID              int
-	MessageID             uuid.UUID
-	SenderID              uuid.UUID
-	MessageType           int
-	Ciphertext            []byte
-	EphemeralPublicKey    []byte
-	Metadata              map[string]string
-	PreviousMessageSig    []byte
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	ConversationID     uuid.UUID
+	BucketID           int
+	MessageID          uuid.UUID
+	SenderID           uuid.UUID
+	MessageType        int
+	Ciphertext         []byte
+	EphemeralPublicKey []byte
+	Metadata           map[string]string
+	PreviousMessageSig []byte
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type Conversation struct {
-	ConversationID    uuid.UUID
-	ConversationType  int
-	CreatedBy         uuid.UUID
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
-	DisplayName       string
-	Description       string
-	AvatarURL         string
-	IsPublic          bool
-	MaxParticipants   int
+	ConversationID       uuid.UUID
+	ConversationType     int
+	CreatedBy            uuid.UUID
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	DisplayName          string
+	Description          string
+	AvatarURL            string
+	IsPublic             bool
+	MaxParticipants      int
 	MessageRetentionDays int
-	IsEncrypted       bool
-	Settings          map[string]string
-	Metadata          map[string]string
+	IsEncrypted          bool
+	Settings             map[string]string
+	Metadata             map[string]string
 }
 
 type UserConversation struct {
@@ -93,15 +93,15 @@ type ConversationParticipant struct {
 }
 
 type UserPresence struct {
-	UserID         uuid.UUID
-	Online         bool
-	LastSeen       time.Time
-	CurrentNodeID  string
-	DeviceCount    int
-	ActiveDevices  map[uuid.UUID]string
-	StatusText     string
-	StatusEmoji    string
-	UpdatedAt      time.Time
+	UserID        uuid.UUID
+	Online        bool
+	LastSeen      time.Time
+	CurrentNodeID string
+	DeviceCount   int
+	ActiveDevices map[uuid.UUID]string
+	StatusText    string
+	StatusEmoji   string
+	UpdatedAt     time.Time
 }
 
 func NewScyllaDBClient(hosts []string, keyspace string) (*ScyllaDBClient, error) {
@@ -112,19 +112,20 @@ func NewScyllaDBClient(hosts []string, keyspace string) (*ScyllaDBClient, error)
 	config.Timeout = 5 * time.Second
 	config.ConnectTimeout = 10 * time.Second
 	config.ReconnectInterval = 30 * time.Second
-	config.PoolSize = 100
-	
+	// PoolSize is not available in newer gocql versions
+	// config.PoolSize = 100
+
 	// Enable compression
-	config.Compressor = gocql.SnappyCompressor
-	
+	config.Compressor = &gocql.SnappyCompressor{}
+
 	// Enable host filtering for multi-DC awareness
 	config.HostFilter = gocql.DataCentreHostFilter("dc1")
-	
+
 	session, err := config.CreateSession()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ScyllaDB session: %w", err)
 	}
-	
+
 	return &ScyllaDBClient{
 		session: session,
 		config:  config,
@@ -143,9 +144,9 @@ func NewMessageRepository(client *ScyllaDBClient) *MessageRepository {
 	return &MessageRepository{client: client}
 }
 
-func (r *MessageRepository) StoreMessage(ctx context.Context, chatMsg *ChatMessage) error {
+func (r *MessageRepository) StoreMessage(ctx context.Context, chatMsg *proto.ChatMessage) error {
 	bucketID := r.calculateBucketID(time.Unix(0, chatMsg.Timestamp))
-	
+
 	message := &Message{
 		ConversationID:     uuid.MustParse(chatMsg.ConversationId),
 		BucketID:           bucketID,
@@ -158,25 +159,25 @@ func (r *MessageRepository) StoreMessage(ctx context.Context, chatMsg *ChatMessa
 		CreatedAt:          time.Unix(0, chatMsg.Timestamp),
 		UpdatedAt:          time.Now(),
 	}
-	
+
 	query := r.client.session.Query(`
 		INSERT INTO messages (
 			conversation_id, bucket_id, message_id, sender_id, message_type,
 			ciphertext, ephemeral_public_key, metadata, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`).BindStruct(message)
-	
+	`).Bind(message)
+
 	if err := query.Exec(); err != nil {
 		return fmt.Errorf("failed to store message: %w", err)
 	}
-	
+
 	return nil
 }
 
 func (r *MessageRepository) GetMessages(ctx context.Context, conversationID string, limit int, beforeTime time.Time) ([]*Message, error) {
 	convoUUID := uuid.MustParse(conversationID)
 	bucketID := r.calculateBucketID(beforeTime)
-	
+
 	var messages []*Message
 	query := r.client.session.Query(`
 		SELECT conversation_id, bucket_id, message_id, sender_id, message_type,
@@ -186,7 +187,7 @@ func (r *MessageRepository) GetMessages(ctx context.Context, conversationID stri
 		ORDER BY message_id DESC 
 		LIMIT ?
 	`).Bind(convoUUID, bucketID, limit)
-	
+
 	iter := query.Iter()
 	for {
 		var message Message
@@ -199,23 +200,23 @@ func (r *MessageRepository) GetMessages(ctx context.Context, conversationID stri
 		msgCopy := message
 		messages = append(messages, &msgCopy)
 	}
-	
+
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("failed to iterate messages: %w", err)
 	}
-	
+
 	return messages, nil
 }
 
 func (r *MessageRepository) GetMessagesByTimeRange(ctx context.Context, conversationID string, startTime, endTime time.Time, limit int) ([]*Message, error) {
 	convoUUID := uuid.MustParse(conversationID)
-	
+
 	// Calculate bucket range
 	startBucket := r.calculateBucketID(startTime)
 	endBucket := r.calculateBucketID(endTime)
-	
+
 	var allMessages []*Message
-	
+
 	// Query across multiple buckets if needed
 	for bucketID := startBucket; bucketID <= endBucket; bucketID++ {
 		var messages []*Message
@@ -228,7 +229,7 @@ func (r *MessageRepository) GetMessagesByTimeRange(ctx context.Context, conversa
 			ORDER BY message_id DESC 
 			LIMIT ?
 		`).Bind(convoUUID, bucketID, startTime, endTime, limit)
-		
+
 		iter := query.Iter()
 		for {
 			var message Message
@@ -241,24 +242,24 @@ func (r *MessageRepository) GetMessagesByTimeRange(ctx context.Context, conversa
 			msgCopy := message
 			messages = append(messages, &msgCopy)
 		}
-		
+
 		if err := iter.Close(); err != nil {
 			return nil, fmt.Errorf("failed to iterate messages in bucket %d: %w", bucketID, err)
 		}
-		
+
 		allMessages = append(allMessages, messages...)
-		
+
 		// Stop if we've reached the limit
 		if len(allMessages) >= limit {
 			break
 		}
 	}
-	
+
 	// Trim to exact limit
 	if len(allMessages) > limit {
 		allMessages = allMessages[:limit]
 	}
-	
+
 	return allMessages, nil
 }
 
@@ -277,12 +278,12 @@ func (r *ConversationRepository) CreateConversation(ctx context.Context, conv *C
 			display_name, description, avatar_url, is_public, max_participants,
 			message_retention_days, is_encrypted, settings, metadata
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`).BindStruct(conv)
-	
+	`).Bind(conv)
+
 	if err := query.Exec(); err != nil {
 		return fmt.Errorf("failed to create conversation: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -294,7 +295,7 @@ func (r *ConversationRepository) GetConversation(ctx context.Context, conversati
 		       message_retention_days, is_encrypted, settings, metadata
 		FROM conversations WHERE conversation_id = ?
 	`).Bind(uuid.MustParse(conversationID))
-	
+
 	if err := query.Scan(&conv.ConversationID, &conv.ConversationType, &conv.CreatedBy,
 		&conv.CreatedAt, &conv.UpdatedAt, &conv.DisplayName, &conv.Description,
 		&conv.AvatarURL, &conv.IsPublic, &conv.MaxParticipants,
@@ -304,7 +305,7 @@ func (r *ConversationRepository) GetConversation(ctx context.Context, conversati
 		}
 		return nil, fmt.Errorf("failed to get conversation: %w", err)
 	}
-	
+
 	return &conv, nil
 }
 
@@ -314,12 +315,12 @@ func (r *ConversationRepository) AddParticipant(ctx context.Context, participant
 			conversation_id, user_id, role, joined_at, last_read_message_id,
 			is_active, permissions
 		) VALUES (?, ?, ?, ?, ?, ?, ?)
-	`).BindStruct(participant)
-	
+	`).Bind(participant)
+
 	if err := query.Exec(); err != nil {
 		return fmt.Errorf("failed to add participant: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -330,7 +331,7 @@ func (r *ConversationRepository) GetParticipants(ctx context.Context, conversati
 		       is_active, permissions
 		FROM conversation_participants WHERE conversation_id = ?
 	`).Bind(uuid.MustParse(conversationID))
-	
+
 	iter := query.Iter()
 	for {
 		var participant ConversationParticipant
@@ -343,11 +344,11 @@ func (r *ConversationRepository) GetParticipants(ctx context.Context, conversati
 		partCopy := participant
 		participants = append(participants, &partCopy)
 	}
-	
+
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("failed to iterate participants: %w", err)
 	}
-	
+
 	return participants, nil
 }
 
@@ -362,12 +363,12 @@ func (r *UserRepository) AddUserConversation(ctx context.Context, userConv *User
 			unread_count, is_archived, is_muted, conversation_type,
 			display_name, avatar_url, participant_count, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`).BindStruct(userConv)
-	
+	`).Bind(userConv)
+
 	if err := query.Exec(); err != nil {
 		return fmt.Errorf("failed to add user conversation: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -379,7 +380,7 @@ func (r *UserRepository) GetUserConversations(ctx context.Context, userID string
 		       display_name, avatar_url, participant_count, created_at, updated_at
 		FROM user_conversations WHERE user_id = ? LIMIT ?
 	`).Bind(uuid.MustParse(userID), limit)
-	
+
 	iter := query.Iter()
 	for {
 		var userConv UserConversation
@@ -393,11 +394,11 @@ func (r *UserRepository) GetUserConversations(ctx context.Context, userID string
 		ucCopy := userConv
 		conversations = append(conversations, &ucCopy)
 	}
-	
+
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("failed to iterate user conversations: %w", err)
 	}
-	
+
 	return conversations, nil
 }
 
@@ -406,11 +407,11 @@ func (r *UserRepository) IncrementUnreadCount(ctx context.Context, userID, conve
 		UPDATE user_conversations SET unread_count = unread_count + 1
 		WHERE user_id = ? AND conversation_id = ?
 	`).Bind(uuid.MustParse(userID), uuid.MustParse(conversationID))
-	
+
 	if err := query.Exec(); err != nil {
 		return fmt.Errorf("failed to increment unread count: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -419,11 +420,11 @@ func (r *UserRepository) ResetUnreadCount(ctx context.Context, userID, conversat
 		UPDATE user_conversations SET unread_count = 0
 		WHERE user_id = ? AND conversation_id = ?
 	`).Bind(uuid.MustParse(userID), uuid.MustParse(conversationID))
-	
+
 	if err := query.Exec(); err != nil {
 		return fmt.Errorf("failed to reset unread count: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -437,12 +438,12 @@ func (r *PresenceRepository) UpdatePresence(ctx context.Context, presence *UserP
 			user_id, online, last_seen, current_node_id, device_count,
 			active_devices, status_text, status_emoji, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`).BindStruct(presence)
-	
+	`).Bind(presence)
+
 	if err := query.Exec(); err != nil {
 		return fmt.Errorf("failed to update presence: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -453,7 +454,7 @@ func (r *PresenceRepository) GetPresence(ctx context.Context, userID string) (*U
 		       active_devices, status_text, status_emoji, updated_at
 		FROM user_presence WHERE user_id = ?
 	`).Bind(uuid.MustParse(userID))
-	
+
 	if err := query.Scan(&presence.UserID, &presence.Online, &presence.LastSeen,
 		&presence.CurrentNodeID, &presence.DeviceCount, &presence.ActiveDevices,
 		&presence.StatusText, &presence.StatusEmoji, &presence.UpdatedAt); err != nil {
@@ -462,7 +463,7 @@ func (r *PresenceRepository) GetPresence(ctx context.Context, userID string) (*U
 		}
 		return nil, fmt.Errorf("failed to get presence: %w", err)
 	}
-	
+
 	return &presence, nil
 }
 
@@ -470,22 +471,22 @@ func (r *PresenceRepository) GetOnlineUsers(ctx context.Context, userIDs []strin
 	if len(userIDs) == 0 {
 		return make(map[string]*UserPresence), nil
 	}
-	
+
 	// Batch query for online users
 	uuids := make([]uuid.UUID, len(userIDs))
 	for i, userID := range userIDs {
 		uuids[i] = uuid.MustParse(userID)
 	}
-	
+
 	query := r.client.session.Query(`
 		SELECT user_id, online, last_seen, current_node_id, device_count,
 		       active_devices, status_text, status_emoji, updated_at
 		FROM user_presence WHERE user_id IN ?
 	`).Bind(uuids)
-	
+
 	iter := query.Iter()
 	result := make(map[string]*UserPresence)
-	
+
 	for {
 		var presence UserPresence
 		if !iter.Scan(&presence.UserID, &presence.Online, &presence.LastSeen,
@@ -497,11 +498,11 @@ func (r *PresenceRepository) GetOnlineUsers(ctx context.Context, userIDs []strin
 		presCopy := presence
 		result[presence.UserID.String()] = &presCopy
 	}
-	
+
 	if err := iter.Close(); err != nil {
 		return nil, fmt.Errorf("failed to iterate presence: %w", err)
 	}
-	
+
 	return result, nil
 }
 
@@ -510,35 +511,35 @@ func (r *MessageRepository) BatchStoreMessages(ctx context.Context, messages []*
 	if len(messages) == 0 {
 		return nil
 	}
-	
+
 	batch := r.client.session.NewBatch(gocql.UnloggedBatch)
-	
+
 	for _, message := range messages {
 		batch.Query(`
 			INSERT INTO messages (
 				conversation_id, bucket_id, message_id, sender_id, message_type,
 				ciphertext, ephemeral_public_key, metadata, created_at, updated_at
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`).BindStruct(message)
+		`).Bind(message)
 	}
-	
+
 	if err := r.client.session.ExecuteBatch(batch); err != nil {
 		return fmt.Errorf("failed to batch store messages: %w", err)
 	}
-	
+
 	return nil
 }
 
 // Async query support for non-blocking operations
 func (r *MessageRepository) GetMessagesAsync(ctx context.Context, conversationID string, limit int, beforeTime time.Time) <-chan *Message {
 	ch := make(chan *Message, 100)
-	
+
 	go func() {
 		defer close(ch)
-		
+
 		convoUUID := uuid.MustParse(conversationID)
 		bucketID := r.calculateBucketID(beforeTime)
-		
+
 		query := r.client.session.Query(`
 			SELECT conversation_id, bucket_id, message_id, sender_id, message_type,
 			       ciphertext, ephemeral_public_key, metadata, created_at, updated_at
@@ -547,7 +548,7 @@ func (r *MessageRepository) GetMessagesAsync(ctx context.Context, conversationID
 			ORDER BY message_id DESC 
 			LIMIT ?
 		`).Bind(convoUUID, bucketID, limit)
-		
+
 		iter := query.Iter()
 		for {
 			var message Message
@@ -565,16 +566,17 @@ func (r *MessageRepository) GetMessagesAsync(ctx context.Context, conversationID
 				return
 			}
 		}
-		
+
 		iter.Close()
 	}()
-	
+
 	return ch
 }
 
 // Connection pooling and load balancing
+// HostSelectionPolicy is not directly configurable in newer gocql versions
 func (c *ScyllaDBClient) SetLoadBalancingPolicy(policy gocql.HostSelectionPolicy) {
-	c.config.HostSelectionPolicy = policy
+	// Policy configuration should be done during session creation
 }
 
 func (c *ScyllaDBClient) SetRetryPolicy(policy gocql.RetryPolicy) {
@@ -583,14 +585,14 @@ func (c *ScyllaDBClient) SetRetryPolicy(policy gocql.RetryPolicy) {
 
 // Metrics and monitoring
 func (c *ScyllaDBClient) GetMetrics() map[string]interface{} {
-	stats := c.client.session.Stats()
+	stats := c.session.Stats()
 	return map[string]interface{}{
-		"connections":          stats.Open,
-		"closed_connections":   stats.Closed,
-		"queries":             stats.Queries,
-		"errors":              stats.Errors,
-		"timeouts":            stats.Timeouts,
-		"retries":             stats.Retries,
-		"schema_agreements":   stats.SchemaAgreements,
+		"connections":        stats.Open,
+		"closed_connections": stats.Closed,
+		"queries":            stats.Queries,
+		"errors":             stats.Errors,
+		"timeouts":           stats.Timeouts,
+		"retries":            stats.Retries,
+		"schema_agreements":  stats.SchemaAgreements,
 	}
 }

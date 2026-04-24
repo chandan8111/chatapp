@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -13,48 +14,48 @@ import (
 // Metrics holds all application metrics
 type Metrics struct {
 	// Connection metrics
-	ConnectionsActive      prometheus.Gauge
-	ConnectionsTotal       prometheus.Counter
-	ConnectionsDuration    prometheus.Histogram
-	ConnectionErrors       prometheus.Counter
-	
+	ConnectionsActive   *prometheus.GaugeVec
+	ConnectionsTotal    *prometheus.CounterVec
+	ConnectionsDuration *prometheus.HistogramVec
+	ConnectionErrors    *prometheus.CounterVec
+
 	// Message metrics
-	MessagesTotal          prometheus.Counter
-	MessagesDuration       prometheus.Histogram
-	MessageSize            prometheus.Histogram
-	MessageErrors          prometheus.Counter
-	
+	MessagesTotal    *prometheus.CounterVec
+	MessagesDuration *prometheus.HistogramVec
+	MessageSize      *prometheus.HistogramVec
+	MessageErrors    *prometheus.CounterVec
+
 	// Presence metrics
-	PresenceUpdates        prometheus.Counter
-	PresenceOnlineUsers    prometheus.Gauge
-	PresenceErrors         prometheus.Counter
-	
+	PresenceUpdates     *prometheus.CounterVec
+	PresenceOnlineUsers *prometheus.GaugeVec
+	PresenceErrors      *prometheus.CounterVec
+
 	// Kafka metrics
-	KafkaMessagesProduced  prometheus.Counter
-	KafkaMessagesConsumed  prometheus.Counter
-	KafkaErrors            prometheus.Counter
-	KafkaLag               prometheus.Gauge
-	
+	KafkaMessagesProduced prometheus.Counter
+	KafkaMessagesConsumed prometheus.Counter
+	KafkaErrors           prometheus.Counter
+	KafkaLag              prometheus.Gauge
+
 	// Redis metrics
-	RedisOperations        prometheus.Counter
-	RedisErrors            prometheus.Counter
-	RedisDuration          prometheus.Histogram
-	
+	RedisOperations prometheus.Counter
+	RedisErrors     prometheus.Counter
+	RedisDuration   prometheus.Histogram
+
 	// ScyllaDB metrics
-	ScyllaOperations       prometheus.Counter
-	ScyllaErrors           prometheus.Counter
-	ScyllaDuration         prometheus.Histogram
-	
+	ScyllaOperations prometheus.Counter
+	ScyllaErrors     prometheus.Counter
+	ScyllaDuration   prometheus.Histogram
+
 	// HTTP metrics
-	HTTPRequests           prometheus.Counter
-	HTTPDuration           prometheus.Histogram
-	HTTPErrors             prometheus.Counter
-	
+	HTTPRequests *prometheus.CounterVec
+	HTTPDuration *prometheus.HistogramVec
+	HTTPErrors   prometheus.Counter
+
 	// System metrics
-	Goroutines             prometheus.Gauge
-	MemoryUsage            prometheus.Gauge
-	GCDuration             prometheus.Histogram
-	
+	Goroutines  prometheus.Gauge
+	MemoryUsage prometheus.Gauge
+	GCDuration  prometheus.Histogram
+
 	logger *zap.Logger
 }
 
@@ -72,7 +73,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 	m := &Metrics{
 		logger: config.Logger,
 	}
-	
+
 	// Initialize connection metrics
 	m.ConnectionsActive = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: config.Namespace,
@@ -83,7 +84,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.ConnectionsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -93,7 +94,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.ConnectionsDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -104,7 +105,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.ConnectionErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -114,7 +115,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	// Initialize message metrics
 	m.MessagesTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
@@ -125,7 +126,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.MessagesDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -136,7 +137,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.MessageSize = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -147,7 +148,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.MessageErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -157,7 +158,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	// Initialize presence metrics
 	m.PresenceUpdates = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
@@ -168,7 +169,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.PresenceOnlineUsers = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -178,7 +179,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.PresenceErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -188,7 +189,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	// Initialize Kafka metrics
 	m.KafkaMessagesProduced = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
@@ -199,7 +200,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.KafkaMessagesConsumed = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -209,7 +210,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.KafkaErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -219,7 +220,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.KafkaLag = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -229,7 +230,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	// Initialize Redis metrics
 	m.RedisOperations = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
@@ -240,7 +241,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.RedisErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -250,7 +251,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.RedisDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -261,7 +262,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	// Initialize ScyllaDB metrics
 	m.ScyllaOperations = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
@@ -272,7 +273,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.ScyllaErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -282,7 +283,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.ScyllaDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -293,7 +294,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	// Initialize HTTP metrics
 	m.HTTPRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: config.Namespace,
@@ -304,7 +305,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	}, []string{"method", "endpoint", "status"})
-	
+
 	m.HTTPDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -315,7 +316,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	}, []string{"method", "endpoint"})
-	
+
 	m.HTTPErrors = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -325,7 +326,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	// Initialize system metrics
 	m.Goroutines = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: config.Namespace,
@@ -336,7 +337,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.MemoryUsage = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -346,7 +347,7 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	m.GCDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: config.Namespace,
 		Subsystem: config.Subsystem,
@@ -357,10 +358,10 @@ func NewMetrics(config MetricsConfig) *Metrics {
 			"service": config.ServiceName,
 		},
 	})
-	
+
 	// Register all metrics
 	m.registerMetrics()
-	
+
 	return m
 }
 
@@ -401,34 +402,34 @@ func (m *Metrics) registerMetrics() {
 func (m *Metrics) StartMetricsServer(ctx context.Context, port int) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	
+
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
 		Handler:      mux,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 	}
-	
+
 	m.logger.Info("Starting metrics server", zap.Int("port", port))
-	
+
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			m.logger.Error("Metrics server failed", zap.Error(err))
 		}
 	}()
-	
+
 	// Wait for context cancellation
 	<-ctx.Done()
-	
+
 	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	
+
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		m.logger.Error("Failed to shutdown metrics server", zap.Error(err))
 		return err
 	}
-	
+
 	m.logger.Info("Metrics server stopped")
 	return nil
 }
@@ -437,7 +438,7 @@ func (m *Metrics) StartMetricsServer(ctx context.Context, port int) error {
 func (m *Metrics) RecordConnection(duration time.Duration, err error) {
 	m.ConnectionsTotal.Inc()
 	m.ConnectionsDuration.Observe(duration.Seconds())
-	
+
 	if err != nil {
 		m.ConnectionErrors.Inc()
 	}
@@ -453,7 +454,7 @@ func (m *Metrics) RecordMessage(size int, duration time.Duration, err error) {
 	m.MessagesTotal.Inc()
 	m.MessagesDuration.Observe(duration.Seconds())
 	m.MessageSize.Observe(float64(size))
-	
+
 	if err != nil {
 		m.MessageErrors.Inc()
 	}
@@ -462,7 +463,7 @@ func (m *Metrics) RecordMessage(size int, duration time.Duration, err error) {
 // RecordPresenceUpdate records presence update metrics
 func (m *Metrics) RecordPresenceUpdate(err error) {
 	m.PresenceUpdates.Inc()
-	
+
 	if err != nil {
 		m.PresenceErrors.Inc()
 	}
@@ -480,7 +481,7 @@ func (m *Metrics) RecordKafkaMessage(produced bool, err error) {
 	} else {
 		m.KafkaMessagesConsumed.Inc()
 	}
-	
+
 	if err != nil {
 		m.KafkaErrors.Inc()
 	}
@@ -495,7 +496,7 @@ func (m *Metrics) UpdateKafkaLag(lag int64) {
 func (m *Metrics) RecordRedisOperation(duration time.Duration, err error) {
 	m.RedisOperations.Inc()
 	m.RedisDuration.Observe(duration.Seconds())
-	
+
 	if err != nil {
 		m.RedisErrors.Inc()
 	}
@@ -505,7 +506,7 @@ func (m *Metrics) RecordRedisOperation(duration time.Duration, err error) {
 func (m *Metrics) RecordScyllaOperation(duration time.Duration, err error) {
 	m.ScyllaOperations.Inc()
 	m.ScyllaDuration.Observe(duration.Seconds())
-	
+
 	if err != nil {
 		m.ScyllaErrors.Inc()
 	}
@@ -515,7 +516,7 @@ func (m *Metrics) RecordScyllaOperation(duration time.Duration, err error) {
 func (m *Metrics) RecordHTTPRequest(method, endpoint, status string, duration time.Duration) {
 	m.HTTPRequests.WithLabelValues(method, endpoint, status).Inc()
 	m.HTTPDuration.WithLabelValues(method, endpoint).Observe(duration.Seconds())
-	
+
 	if status[0] == '4' || status[0] == '5' {
 		m.HTTPErrors.Inc()
 	}

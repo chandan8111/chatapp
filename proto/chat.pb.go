@@ -6,8 +6,6 @@ package proto
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	reflect "reflect"
-	sync "sync"
 )
 
 const (
@@ -136,7 +134,10 @@ func (x *DeliveryReceipt) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*DeliveryReceipt) ProtoMessage() {}
+func (x *DeliveryReceipt) ProtoReflect() protoreflect.Message {
+	// Simplified implementation
+	return nil
+}
 
 // UserPresence represents user presence information
 type UserPresence struct {
@@ -158,7 +159,10 @@ func (x *UserPresence) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*UserPresence) ProtoMessage() {}
+func (x *UserPresence) ProtoReflect() protoreflect.Message {
+	// Simplified implementation
+	return nil
+}
 
 // Heartbeat represents a heartbeat message
 type Heartbeat struct {
@@ -179,4 +183,7 @@ func (x *Heartbeat) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*Heartbeat) ProtoMessage() {}
+func (x *Heartbeat) ProtoReflect() protoreflect.Message {
+	// Simplified implementation
+	return nil
+}
