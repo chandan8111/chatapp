@@ -14,18 +14,17 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
-	"google.golang.org/protobuf/proto"
 
-	"github.com/chatapp/proto"
+	chatappProto "github.com/chatapp/proto"
 )
 
 const (
-	maxConnectionsPerNode = 200000
-	writeWait            = 10 * time.Second
-	pongWait             = 60 * time.Second
-	pingPeriod           = (pongWait * 9) / 10
-	maxMessageSize       = 8192
-	heartbeatBatchSize   = 1000
+	maxConnectionsPerNode  = 200000
+	writeWait              = 10 * time.Second
+	pongWait               = 60 * time.Second
+	pingPeriod             = (pongWait * 9) / 10
+	maxMessageSize         = 8192
+	heartbeatBatchSize     = 1000
 	heartbeatFlushInterval = 5 * time.Second
 )
 
@@ -47,15 +46,15 @@ type Connection struct {
 }
 
 type Hub struct {
-	connections    map[string]*Connection // userID -> Connection
-	register       chan *Connection
-	unregister     chan *Connection
-	broadcast      chan []byte
-	mu             sync.RWMutex
+	connections     map[string]*Connection // userID -> Connection
+	register        chan *Connection
+	unregister      chan *Connection
+	broadcast       chan []byte
+	mu              sync.RWMutex
 	connectionCount int64
-	redisClient    *redis.Client
-	heartbeatBatch map[string]bool // userID batch for Redis
-	heartbeatMu    sync.Mutex
+	redisClient     *redis.Client
+	heartbeatBatch  map[string]bool // userID batch for Redis
+	heartbeatMu     sync.Mutex
 }
 
 type PresenceService struct {
@@ -151,7 +150,7 @@ func (h *Hub) markUserOnline(userID string) {
 func (h *Hub) markUserOffline(userID string) {
 	ctx := context.Background()
 	userIDInt := hashUserID(userID)
-	
+
 	// Use Redis BITMAP to track online status (100M users = 12.5MB bitmap)
 	bitmapKey := "presence:online"
 	h.redisClient.SetBit(ctx, bitmapKey, userIDInt, 0)
@@ -176,15 +175,15 @@ func (h *Hub) flushHeartbeatBatch() {
 	ctx := context.Background()
 	pipe := h.redisClient.Pipeline()
 	bitmapKey := "presence:online"
-	
+
 	for userID := range batch {
 		userIDInt := hashUserID(userID)
 		pipe.SetBit(ctx, bitmapKey, userIDInt, 1)
 	}
-	
+
 	// Set expiration for bitmap (24 hours)
 	pipe.Expire(ctx, bitmapKey, 24*time.Hour)
-	
+
 	if _, err := pipe.Exec(ctx); err != nil {
 		log.Printf("Failed to flush heartbeat batch: %v", err)
 	}
@@ -270,8 +269,8 @@ func (c *Connection) writePump() {
 
 func (c *Connection) handleMessage(message []byte, hub *Hub) {
 	// Parse protobuf message
-	var chatMsg proto.ChatMessage
-	if err := proto.Unmarshal(message, &chatMsg); err != nil {
+	var chatMsg chatappProto.ChatMessage
+	if err := chatappProto.Unmarshal(message, &chatMsg); err != nil {
 		log.Printf("Failed to unmarshal message: %v", err)
 		return
 	}
@@ -326,16 +325,13 @@ func (ws *WebSocketGateway) handleWebSocket(w http.ResponseWriter, r *http.Reque
 func NewWebSocketGateway(redisAddr string) *WebSocketGateway {
 	// Configure Redis client
 	redisClient := redis.NewClient(&redis.Options{
-		Addr:            redisAddr,
-		MaxRetries:      3,
-		PoolSize:        100,
-		MinIdleConns:    10,
-		MaxConnAge:      time.Hour,
-		ReadTimeout:     100 * time.Millisecond,
-		WriteTimeout:    100 * time.Millisecond,
-		PoolTimeout:     30 * time.Second,
-		IdleTimeout:     5 * time.Minute,
-		IdleCheckFrequency: 1 * time.Minute,
+		Addr:         redisAddr,
+		MaxRetries:   3,
+		PoolSize:     100,
+		MinIdleConns: 10,
+		ReadTimeout:  100 * time.Millisecond,
+		WriteTimeout: 100 * time.Millisecond,
+		PoolTimeout:  30 * time.Second,
 	})
 
 	hub := NewHub(redisClient)
@@ -385,7 +381,7 @@ func (ws *WebSocketGateway) Start(port int) error {
 func main() {
 	redisAddr := "localhost:6379" // Configure from environment in production
 	gateway := NewWebSocketGateway(redisAddr)
-	
+
 	if err := gateway.Start(8080); err != nil {
 		log.Fatalf("Failed to start WebSocket Gateway: %v", err)
 	}

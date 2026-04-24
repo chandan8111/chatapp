@@ -7,7 +7,6 @@ import {
   IconButton,
   Typography,
   Avatar,
-  Divider,
   List,
   ListItem,
   ListItemButton,
@@ -20,7 +19,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Chip,
   useTheme,
   useMediaQuery,
 } from '@mui/material';

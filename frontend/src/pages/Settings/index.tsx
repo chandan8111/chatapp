@@ -5,7 +5,6 @@ import {
   Typography,
   Box,
   Switch,
-  FormControlLabel,
   Divider,
   Button,
   List,

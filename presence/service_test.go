@@ -1,16 +1,23 @@
 package presence
 
 import (
-	"context"
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+func createTestRedisClient() *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+}
+
 func TestNewPresenceService(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
+	service := NewPresenceService(createTestRedisClient(), "test-node")
 	require.NotNil(t, service)
 	assert.Equal(t, "test-node", service.nodeID)
 	assert.NotNil(t, service.localBuffer)
@@ -19,9 +26,9 @@ func TestNewPresenceService(t *testing.T) {
 
 func TestHashUserID(t *testing.T) {
 	service := &PresenceService{nodeID: "test"}
-	
+
 	tests := []struct {
-		userID string
+		userID       string
 		wantPositive bool
 	}{
 		{"user-123", true},
@@ -29,7 +36,7 @@ func TestHashUserID(t *testing.T) {
 		{"", true}, // empty string should still return a hash
 		{"very-long-user-id-with-many-characters-12345", true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.userID, func(t *testing.T) {
 			hash := service.hashUserID(tt.userID)
@@ -42,23 +49,21 @@ func TestHashUserID(t *testing.T) {
 }
 
 func TestPresenceServiceOperations(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
-	ctx := context.Background()
+	service := NewPresenceService(createTestRedisClient(), "test-node")
 	userID := "test-user-123"
 	deviceID := "device-456"
-	
+
 	// Test marking user online
 	service.MarkUserOnline(userID, deviceID)
-	
+
 	// Verify user is in local buffer
 	service.localBufferMu.RLock()
 	assert.Contains(t, service.localBuffer, userID)
 	service.localBufferMu.RUnlock()
-	
+
 	// Test flushing buffer
 	service.flushBuffer()
-	
+
 	// Verify buffer is cleared after flush
 	service.localBufferMu.RLock()
 	assert.Empty(t, service.localBuffer)
@@ -74,7 +79,7 @@ func TestUserPresenceStruct(t *testing.T) {
 		DeviceID:  "device-1",
 		Timestamp: time.Now(),
 	}
-	
+
 	assert.Equal(t, "user-123", presence.UserID)
 	assert.True(t, presence.Online)
 	assert.Equal(t, "node-1", presence.NodeID)
@@ -90,7 +95,7 @@ func TestNodePresenceStruct(t *testing.T) {
 		CPUUsage:      45.5,
 		MemoryUsage:   62.3,
 	}
-	
+
 	assert.Equal(t, "node-1", presence.NodeID)
 	assert.Equal(t, 1000, presence.OnlineUsers)
 	assert.Equal(t, 5000, presence.TotalUsers)
@@ -106,7 +111,7 @@ func TestPresenceStatsStruct(t *testing.T) {
 		OnlineRatio:  0.75,
 		ActiveNodes:  50,
 	}
-	
+
 	assert.Equal(t, int64(100000000), stats.TotalUsers)
 	assert.Equal(t, int64(75000000), stats.OnlineUsers)
 	assert.Equal(t, int64(25000000), stats.OfflineUsers)
@@ -115,11 +120,11 @@ func TestPresenceStatsStruct(t *testing.T) {
 }
 
 func TestFlushBufferEmpty(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// Flush empty buffer should not panic
 	service.flushBuffer()
-	
+
 	// Buffer should remain empty
 	service.localBufferMu.RLock()
 	assert.Empty(t, service.localBuffer)
@@ -127,26 +132,26 @@ func TestFlushBufferEmpty(t *testing.T) {
 }
 
 func TestFlushBufferWithData(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// Add users to buffer
 	users := []string{"user-1", "user-2", "user-3"}
 	for _, userID := range users {
 		service.MarkUserOnline(userID, "device-1")
 	}
-	
+
 	// Verify users in buffer
 	service.localBufferMu.RLock()
 	assert.Equal(t, 3, len(service.localBuffer))
 	service.localBufferMu.RUnlock()
-	
+
 	// Note: Actual flush would require Redis connection
 	// For unit test, we just verify the buffer state
 }
 
 func TestCleanupExpiredPresence(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// This test would require a mock Redis client
 	// For now, we just verify the method doesn't panic
 	err := service.CleanupExpiredPresence()
@@ -155,11 +160,11 @@ func TestCleanupExpiredPresence(t *testing.T) {
 }
 
 func TestGetActiveNodes(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// This test would require a mock Redis client
 	nodes, err := service.GetActiveNodes()
-	
+
 	// Error is expected since we're not connected to Redis
 	assert.Error(t, err)
 	assert.Nil(t, nodes)
@@ -168,7 +173,7 @@ func TestGetActiveNodes(t *testing.T) {
 func BenchmarkHashUserID(b *testing.B) {
 	service := &PresenceService{nodeID: "benchmark"}
 	userID := "user-12345"
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		service.hashUserID(userID)
@@ -176,8 +181,8 @@ func BenchmarkHashUserID(b *testing.B) {
 }
 
 func BenchmarkMarkUserOnline(b *testing.B) {
-	service := NewPresenceService("localhost:6379", "benchmark-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "benchmark-node")
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		userID := fmt.Sprintf("user-%d", i)
@@ -186,22 +191,22 @@ func BenchmarkMarkUserOnline(b *testing.B) {
 }
 
 func TestPresenceServiceShutdown(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// Add some users to buffer
 	service.MarkUserOnline("user-1", "device-1")
 	service.MarkUserOnline("user-2", "device-1")
-	
+
 	// Shutdown should flush buffer and cleanup
 	service.Shutdown()
-	
+
 	// Verify service is properly shut down
 	assert.NotNil(t, service)
 }
 
 func TestUpdateNodePresence(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// This would normally update Redis, but we're testing the struct behavior
 	nodePresence := &NodePresence{
 		NodeID:        service.nodeID,
@@ -211,41 +216,41 @@ func TestUpdateNodePresence(t *testing.T) {
 		CPUUsage:      50.0,
 		MemoryUsage:   60.0,
 	}
-	
+
 	assert.NotNil(t, nodePresence)
 	assert.Equal(t, "test-node", nodePresence.NodeID)
 }
 
 func TestGetUserPresence(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// This test would require a mock Redis client
 	presence, err := service.GetUserPresence("user-123")
-	
+
 	// Error is expected since we're not connected to Redis
 	assert.Error(t, err)
 	assert.Nil(t, presence)
 }
 
 func TestGetOnlineUsersInBatch(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	userIDs := []string{"user-1", "user-2", "user-3"}
-	
+
 	// This test would require a mock Redis client
 	onlineMap, err := service.GetOnlineUsersInBatch(userIDs)
-	
+
 	// Error is expected since we're not connected to Redis
 	assert.Error(t, err)
 	assert.Nil(t, onlineMap)
 }
 
 func TestPresenceServiceConcurrency(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// Test concurrent access to localBuffer
 	done := make(chan bool)
-	
+
 	// Multiple goroutines marking users online
 	for i := 0; i < 10; i++ {
 		go func(id int) {
@@ -256,12 +261,12 @@ func TestPresenceServiceConcurrency(t *testing.T) {
 			done <- true
 		}(i)
 	}
-	
+
 	// Wait for all goroutines to complete
 	for i := 0; i < 10; i++ {
 		<-done
 	}
-	
+
 	// Verify buffer has all users
 	service.localBufferMu.RLock()
 	assert.Equal(t, 1000, len(service.localBuffer))
@@ -269,21 +274,21 @@ func TestPresenceServiceConcurrency(t *testing.T) {
 }
 
 func TestBitmapKeyConsistency(t *testing.T) {
-	service := NewPresenceService("localhost:6379", "test-node")
-	
+	service := NewPresenceService(createTestRedisClient(), "test-node")
+
 	// Test that same user ID always produces the same hash
 	userID := "consistent-user-123"
 	hash1 := service.hashUserID(userID)
 	hash2 := service.hashUserID(userID)
 	hash3 := service.hashUserID(userID)
-	
+
 	assert.Equal(t, hash1, hash2)
 	assert.Equal(t, hash2, hash3)
 }
 
 func TestHashDistribution(t *testing.T) {
 	service := &PresenceService{nodeID: "test"}
-	
+
 	// Test hash distribution across the bitmap space
 	hashCount := make(map[int64]int)
 	for i := 0; i < 10000; i++ {
@@ -291,7 +296,7 @@ func TestHashDistribution(t *testing.T) {
 		hash := service.hashUserID(userID)
 		hashCount[hash]++
 	}
-	
+
 	// Check for reasonable distribution
 	// In a good hash function, we should have very few collisions
 	collisions := 0
@@ -300,7 +305,7 @@ func TestHashDistribution(t *testing.T) {
 			collisions++
 		}
 	}
-	
+
 	// Allow for some collisions (less than 1% is good)
 	collisionRate := float64(collisions) / 10000.0
 	assert.Less(t, collisionRate, 0.01)

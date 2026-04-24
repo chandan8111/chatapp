@@ -29,8 +29,8 @@ import {
 } from '@mui/icons-material';
 import { useSelector, useDispatch } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { RootState } from '../store';
-import { logout } from '../store/slices/authSlice';
+import { RootState } from '../../store';
+import { logoutSync } from '../../store/slices/authSlice';
 
 const DRAWER_WIDTH = 280;
 
@@ -61,7 +61,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   };
 
   const handleLogout = () => {
-    dispatch(logout());
+    dispatch(logoutSync());
     handleProfileMenuClose();
     navigate('/login');
   };

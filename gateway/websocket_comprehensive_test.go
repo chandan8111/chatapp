@@ -9,15 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap/zaptest"
 
-	"github.com/chatapp/proto"
+	chatappProto "github.com/chatapp/proto"
 )
 
 // MockRedisClient is a mock for Redis client
@@ -80,20 +78,18 @@ func (m *MockWebSocket) NextWriter(messageType int) (websocket.NextWriter, error
 	return args.Get(0).(websocket.NextWriter), args.Error(1)
 }
 
-// TestConnectionMessageHandling tests the message handling logic
-func TestConnectionMessageHandling(t *testing.T) {
-	logger := zaptest.NewLogger(t)
-
+// TestMessageHandlingProto tests the message handling logic with protobuf
+func TestMessageHandlingProto(t *testing.T) {
 	tests := []struct {
 		name          string
-		message       *proto.ChatMessage
+		message       *chatappProto.ChatMessage
 		senderID      string
 		expectError   bool
 		expectForward bool
 	}{
 		{
 			name: "Valid text message",
-			message: &proto.ChatMessage{
+			message: &chatappProto.ChatMessage{
 				MessageId:      uuid.New().String(),
 				ConversationId: uuid.New().String(),
 				SenderId:       "user-123",
@@ -107,7 +103,7 @@ func TestConnectionMessageHandling(t *testing.T) {
 		},
 		{
 			name: "Sender ID mismatch",
-			message: &proto.ChatMessage{
+			message: &chatappProto.ChatMessage{
 				MessageId:      uuid.New().String(),
 				ConversationId: uuid.New().String(),
 				SenderId:       "user-456",
@@ -121,7 +117,7 @@ func TestConnectionMessageHandling(t *testing.T) {
 		},
 		{
 			name: "Empty message ID",
-			message: &proto.ChatMessage{
+			message: &chatappProto.ChatMessage{
 				ConversationId: uuid.New().String(),
 				SenderId:       "user-123",
 				Timestamp:      time.Now().UnixNano(),
@@ -143,12 +139,12 @@ func TestConnectionMessageHandling(t *testing.T) {
 			}
 
 			// Serialize message
-			messageBytes, err := proto.Marshal(tt.message)
+			messageBytes, err := chatappProto.Marshal(tt.message)
 			require.NoError(t, err)
 
 			// Create hub with mock
 			mockRedis := new(MockRedisClient)
-			hub := NewHub(mockRedis, logger)
+			hub := NewHub(mockRedis)
 
 			receivedBroadcast := false
 			go func() {
@@ -174,9 +170,8 @@ func TestConnectionMessageHandling(t *testing.T) {
 
 // TestConnectionLifecycle tests the complete connection lifecycle
 func TestConnectionLifecycle(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	mockRedis := new(MockRedisClient)
-	hub := NewHub(mockRedis, logger)
+	hub := NewHub(mockRedis)
 
 	// Start hub in background
 	ctx, cancel := context.WithCancel(context.Background())
@@ -223,9 +218,8 @@ func TestConnectionLifecycle(t *testing.T) {
 
 // TestConcurrentConnectionHandling tests concurrent connection operations
 func TestConcurrentConnectionHandling(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	mockRedis := new(MockRedisClient)
-	hub := NewHub(mockRedis, logger)
+	hub := NewHub(mockRedis)
 
 	// Start hub in background
 	ctx, cancel := context.WithCancel(context.Background())
@@ -269,17 +263,15 @@ func TestConcurrentConnectionHandling(t *testing.T) {
 
 // TestHeartbeatBatching tests the heartbeat batching functionality
 func TestHeartbeatBatching(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	mockRedis := new(MockRedisClient)
 	mockPipeline := new(MockRedisClient)
 
-	// Setup mock expectations
 	mockRedis.On("Pipeline").Return(mockPipeline)
 	mockPipeline.On("SetBit", mock.Anything, "presence:online", mock.AnythingOfType("int64"), 1).Return(&redis.IntCmd{})
 	mockPipeline.On("Expire", mock.Anything, "presence:online", mock.AnythingOfType("time.Duration")).Return(&redis.BoolCmd{})
 	mockPipeline.On("Exec", mock.Anything).Return([]redis.Cmder{}, nil)
 
-	hub := NewHub(mockRedis, logger)
+	hub := NewHub(mockRedis)
 
 	// Add users to heartbeat batch
 	userIDs := []string{"user-1", "user-2", "user-3"}
@@ -312,12 +304,12 @@ func TestHeartbeatBatching(t *testing.T) {
 func TestMessageValidation(t *testing.T) {
 	tests := []struct {
 		name        string
-		message     *proto.ChatMessage
+		message     *chatappProto.ChatMessage
 		expectValid bool
 	}{
 		{
 			name: "Valid message",
-			message: &proto.ChatMessage{
+			message: &chatappProto.ChatMessage{
 				MessageId:      uuid.New().String(),
 				ConversationId: uuid.New().String(),
 				SenderId:       "user-123",
@@ -329,7 +321,7 @@ func TestMessageValidation(t *testing.T) {
 		},
 		{
 			name: "Empty message ID",
-			message: &proto.ChatMessage{
+			message: &chatappProto.ChatMessage{
 				ConversationId: uuid.New().String(),
 				SenderId:       "user-123",
 				Timestamp:      time.Now().UnixNano(),
@@ -340,7 +332,7 @@ func TestMessageValidation(t *testing.T) {
 		},
 		{
 			name: "Empty conversation ID",
-			message: &proto.ChatMessage{
+			message: &chatappProto.ChatMessage{
 				MessageId:   uuid.New().String(),
 				SenderId:    "user-123",
 				Timestamp:   time.Now().UnixNano(),
@@ -351,7 +343,7 @@ func TestMessageValidation(t *testing.T) {
 		},
 		{
 			name: "Empty sender ID",
-			message: &proto.ChatMessage{
+			message: &chatappProto.ChatMessage{
 				MessageId:      uuid.New().String(),
 				ConversationId: uuid.New().String(),
 				Timestamp:      time.Now().UnixNano(),
@@ -362,7 +354,7 @@ func TestMessageValidation(t *testing.T) {
 		},
 		{
 			name: "Invalid message type",
-			message: &proto.ChatMessage{
+			message: &chatappProto.ChatMessage{
 				MessageId:      uuid.New().String(),
 				ConversationId: uuid.New().String(),
 				SenderId:       "user-123",
@@ -383,7 +375,7 @@ func TestMessageValidation(t *testing.T) {
 }
 
 // validateChatMessage validates a chat message
-func validateChatMessage(msg *proto.ChatMessage) bool {
+func validateChatMessage(msg *chatappProto.ChatMessage) bool {
 	if msg.MessageId == "" || msg.ConversationId == "" || msg.SenderId == "" {
 		return false
 	}
@@ -398,12 +390,11 @@ func validateChatMessage(msg *proto.ChatMessage) bool {
 
 // TestConnectionLimit tests connection limit enforcement
 func TestConnectionLimit(t *testing.T) {
-	logger := zaptest.NewLogger(t)
 	mockRedis := new(MockRedisClient)
 
 	// Create gateway with low connection limit for testing
 	gateway := &WebSocketGateway{
-		hub: NewHub(mockRedis, logger),
+		hub: NewHub(mockRedis),
 	}
 
 	// Set connection limit to 5 for testing
@@ -432,11 +423,10 @@ func TestConnectionLimit(t *testing.T) {
 
 // BenchmarkMessageHandling benchmarks message handling performance
 func BenchmarkMessageHandling(b *testing.B) {
-	logger := zaptest.NewLogger(b)
 	mockRedis := new(MockRedisClient)
-	hub := NewHub(mockRedis, logger)
+	hub := NewHub(mockRedis)
 
-	message := &proto.ChatMessage{
+	message := &chatappProto.ChatMessage{
 		MessageId:      uuid.New().String(),
 		ConversationId: uuid.New().String(),
 		SenderId:       "user-123",
@@ -445,7 +435,7 @@ func BenchmarkMessageHandling(b *testing.B) {
 		MessageType:    0,
 	}
 
-	messageBytes, err := proto.Marshal(message)
+	messageBytes, err := chatappProto.Marshal(message)
 	require.NoError(b, err)
 
 	conn := &Connection{
@@ -459,11 +449,10 @@ func BenchmarkMessageHandling(b *testing.B) {
 	}
 }
 
-// BenchmarkConnectionRegistration benchmarks connection registration performance
-func BenchmarkConnectionRegistration(b *testing.B) {
-	logger := zaptest.NewLogger(b)
+// BenchmarkConnectionRegistrationAdv benchmarks connection registration performance
+func BenchmarkConnectionRegistrationAdv(b *testing.B) {
 	mockRedis := new(MockRedisClient)
-	hub := NewHub(mockRedis, logger)
+	hub := NewHub(mockRedis)
 	go hub.run()
 
 	b.ResetTimer()

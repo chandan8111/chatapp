@@ -13,8 +13,8 @@ import {
   InputAdornment,
 } from '@mui/material';
 import { Visibility, VisibilityOff, Chat as ChatIcon } from '@mui/icons-material';
-import { RootState } from '../store';
-import { login, clearError } from '../store/slices/authSlice';
+import { RootState } from '../../store';
+import { login, clearError } from '../../store/slices/authSlice';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
